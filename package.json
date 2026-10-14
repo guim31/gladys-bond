@@ -1,6 +1,6 @@
 {
   "name": "gladys-bond",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Bond Bridge integration for Gladys Assistant: ceiling fans, shades and lights over the Bond local API.",
   "type": "module",
