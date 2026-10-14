@@ -1,61 +1,189 @@
-# Demo Devices Template
+# Bond Bridge
 
-This is the user documentation of the integration. Gladys re-hosts this file
-and shows a permanent **Documentation** link to it in the Configuration screen
-(in the user's language, with English as the fallback) — it is when
-configuring that the user needs it most. Keep the short onboarding hints in
-the `section` blocks of the manifest `config_schema`; put the long
-step-by-step (screenshots, troubleshooting…) here.
+Control from Gladys the ceiling fans, shades, lights and other remote-controlled devices of a
+[Bond Bridge](https://bondhome.io/), a Bond Bridge Pro or a Smart by Bond device, over the **local network**: no
+cloud, no Bond account needed by Gladys.
 
-## What you get
+> **Developed without the hardware: feedback welcome.** This integration follows the official Bond Local API v2
+> and the behavior of the Home Assistant `bond` integration, and is tested against a simulated bridge. If your
+> bridge behaves differently, open an issue on the GitHub repository. Not affiliated with Bond or Olibra.
 
-Six demo devices show up after installation: a weather station (real data
-from Open-Meteo), a switch, a dimmable light, a smart plug with power
-metering, a motion sensor and a camera.
+## Overview
+
+A Bond Bridge learns the RF (radio) remotes of your ceiling fans, shades, fireplaces and lights, and replays them
+on command. This integration talks to the bridge on your network and creates one Gladys device per Bond device:
+
+- **ceiling fans**: on/off, speed, direction, breeze mode, light and brightness, up and down lights;
+- **shades, blinds, awnings**: open, close, stop, position;
+- **lights**: on/off, brightness, color temperature;
+- **generic devices**: on/off;
+- **fireplaces**: hidden by default, read-only when shown (see below).
+
+A **dashboard widget** drives a ceiling fan like its wall remote, two **scene triggers** tell when a bridge stops
+answering and comes back, and a **scene action** corrects what Bond believes about a device.
+
+## Requirements
+
+- Gladys Assistant 5.1 or later.
+- A Bond Bridge, Bond Bridge Pro or Smart by Bond device, **set up in the Bond app first** (Wi-Fi, devices added).
+- The bridge and Gladys on the same local network. Give the bridge a fixed IP address in your router (DHCP
+  reservation): Gladys reaches it by its address.
+- The **local token** of the bridge (16 characters), read once — see below.
 
 ## Configuration
 
-1. Open the **Configuration** tab of the integration.
-2. Set the **latitude** and **longitude** the demo weather station should
-   observe (they default to Paris), and pick your temperature unit.
-   The **refresh interval** sets how often the weather station and the
-   plug's power are read: every 5 minutes by default, every minute at most.
-3. Save: the devices appear in the **Discovery** tab, ready to be added.
+In Gladys, open **Integrations**, install **Bond Bridge**, then its **Configuration** tab.
 
-The **Prefer the local connection** toggle drives the demo plug: it reports
-the channel it actually uses as a badge (local or cloud), with an orange dot
-when it runs degraded (local refused, cloud fallback).
+### Find the bridge
 
-## Actions
+Press **Find the bridges**: Gladys looks for Bond bridges on your network (mDNS) and fills in the empty addresses.
+If nothing is found (another subnet, mDNS blocked), type the IP address of the bridge yourself, for example
+`192.168.1.20`. You can configure up to three bridges.
 
-- **Test the weather provider** — performs a live request to Open-Meteo and
-  shows the current temperature and humidity under the button.
-- **Identify a device** — pick one of your devices in the list and it will
-  signal itself (the demo light "blinks" in the logs).
+### Get the local token
 
-## Scenes
+Every request to the bridge carries its local token. Two ways to get it:
 
-The integration adds its own cards to the scene editor (Gladys 5.1 or
-later), under the **Integrations** category:
+1. **From Gladys**: unplug the bridge, plug it back, wait for its light to come back, then within **10 minutes**
+   press **Get the local token**. The bridge gives its token during the 10 minutes after it starts; Gladys saves
+   it in the configuration.
+2. **From the Bond app**: open the bridge (or the Smart by Bond device), **Settings**, **Advanced**, **Local
+   token**, and copy it into the **Local token** field.
 
-- **Motion detected** (trigger) — starts the scene when a demo motion sensor
-  sees something move. Optionally pick the sensor and what moved (person,
-  animal); left empty, any detection matches. The following actions can
-  read what moved with `{{triggerEvent.data.target}}`.
-- **Identify a device** (action) — makes the chosen device signal itself.
-  It returns whether the device could signal itself, so the following
-  actions can depend on it.
+Then press **Test the connection**: each bridge answers with its firmware, the number of devices for Gladys and
+whether live updates work.
 
-## Dashboard
+### Options
 
-Add the **Demo status** widget to a dashboard: it shows the live
-temperature of the weather station and the power of the office plug, the
-connection the plug currently uses (orange when degraded) and the observed
-location. Its **Identify the light** button makes the demo light signal
-itself.
+- **Fireplaces**: `Hidden` (default) or `Shown, read-only`.
+- **Language of the feature names**: the names given to the features when a device is added to Gladys (French by
+  default). They do not change afterwards.
+
+Then go to the **Discovery** tab and add the devices you want.
+
+## Devices
+
+A device gets a feature only when its remote, as set up in the Bond app, has the matching action: a fan remote
+without a light button gets no light.
+
+### Ceiling fans
+
+| Feature         | Gladys type       | What it does                                            |
+| --------------- | ----------------- | ------------------------------------------------------- |
+| Power           | switch            | on / off                                                |
+| Speed           | fan speed         | 1 to the number of speeds of the remote, 0 turns it off |
+| Direction       | airflow direction | forward (summer) / reverse (winter)                     |
+| Breeze mode     | switch            | Bond's natural-breeze mode, when the fan has it         |
+| Light           | light             | the light of the fan                                    |
+| Brightness      | light brightness  | 1 to 100 %, 0 turns the light off                       |
+| Up / Down light | switch            | the separate up and down lights of some fans            |
+
+When the fan is off, its speed shows 0: the bridge keeps the last speed, used again at the next "on". A remote
+that only has toggle buttons (one button for on and off) is toggled only when the state Bond believes differs from
+the one asked for.
+
+### Shades
+
+**Open / close** (open, close, stop) and **Position** (0 % closed, 100 % open) when the motor supports a position.
+Bond counts the other way round (0 open, 100 closed): the integration converts.
+
+### Lights
+
+**Light** (on/off), **Brightness** (1 to 100 %) and **Color temperature** (in kelvin, within the range of the
+light), depending on the remote.
+
+### Fireplaces
+
+A fireplace is **never controlled from Gladys**. Lighting a gas flame by mistake — a scene, a voice assistant, a
+child on the dashboard — is not harmless. By default fireplaces are hidden; with **Shown, read-only** they appear
+with their **Power** and **Flame** as read-only values, for display and scene conditions. Keep using the Bond app
+or the fireplace remote to light it.
+
+### Generic devices
+
+A device of type "Generic" in the Bond app gets a **Power** switch. Do not use it for heating.
+
+### Not supported
+
+Garage doors (a door opened by mistake is a security problem), air conditioners and bidets are not published.
+Groups of the Bond app are not supported either: put the devices in a Gladys scene instead.
+
+## What Bond believes
+
+An RF remote sends, but never answers: **Bond does not know the real state of a device**, it remembers what it
+sent last. The state in Gladys is that belief. It becomes wrong when a device is used with its own remote (the
+Bond Bridge Pro hears some remotes and follows them), a wall switch, or a power cut.
+
+To correct it without sending anything, use **Correct the Bond state** (in the Configuration tab, or as a scene
+action): choose the device and its real state (on, off, light on, light off, open, closed). Bond records it, no
+signal is sent, and the next command from Gladys starts from the right state. The Bond app offers the same
+correction for each device.
+
+## Widget
+
+The **Ceiling fan** widget shows one fan, chosen in its settings:
+
+- the speed (and the brightness of its light) as live tiles;
+- whether the fan and its light are on, its direction, the breeze mode;
+- four buttons: **Slower**, **Faster**, **Light** (on/off) and **Turn on / Turn off**.
+
+"Slower" at speed 1 turns the fan off; "Faster" on a fan that is off starts it at speed 1. If the bridge stops
+answering, the widget says so.
+
+## Scene triggers and actions
+
+| Kind    | Name                    | Variables                          |
+| ------- | ----------------------- | ---------------------------------- |
+| Trigger | Bond bridge unreachable | bridge name, Bond ID               |
+| Trigger | Bond bridge back        | bridge name, Bond ID, minutes away |
+| Action  | Correct the Bond state  | device, real state                 |
+
+A bridge counts as unreachable after two failed readings in a row (about one minute); a wrong token is no
+"unreachable", it shows in the connection status. The devices themselves have no trigger here: use the regular
+"device state changed" trigger of Gladys on their features.
+
+## Scene examples
+
+- **Summer night**: at 11 pm, if the bedroom temperature is above 26 °C, set the bedroom fan to speed 2 and turn
+  its light off.
+- **Sunset**: at sunset, close the patio shades (position 0 %), and open them at 8 am on weekdays.
+- **Bridge watch**: when a Bond bridge is unreachable, send a message "The Bond bridge {{bridge}} is not answering".
+- **Wall switch**: the bedroom fans are cut by a wall switch every night at 1 am: a scene at 1:05 runs "Correct
+  the Bond state: off" on them, so that the next "on" from Gladys does not toggle them off.
+
+## Refresh and network
+
+- **Live updates**: the bridge pushes every state change over UDP (BPUP, port 30007) to the clients that keep a
+  subscription open; the integration renews it every 60 seconds. Changes made in the Bond app (and on a Bond
+  Bridge Pro, with the remotes it hears) appear in Gladys within a second.
+- **Reading**: while the live updates are silent, each device added to Gladys is read every 30 seconds; while they
+  work, every 10 minutes as a safety net. Only the devices added to Gladys are read.
+- **Load on the bridge**: two requests at a time at most, a fresh connection per request, a 5-second timeout. A
+  command is followed by one reading of the device.
+- Everything stays on your network: no cloud, no Bond account, nothing stored in `/data`.
 
 ## Troubleshooting
 
-The integration logs everything it does: check the integration logs from the
-Gladys UI (or `docker logs` on the host) with `LOG_LEVEL=debug` for the full
-detail.
+- **"Local token refused"**: the token changed (a bridge reset changes it) or was mistyped. Get it again (see above).
+- **"Local token missing"**: press **Get the local token** within 10 minutes of plugging the bridge back in.
+- **"Locked" when getting the token**: more than 10 minutes since the bridge started. Unplug it, plug it back,
+  retry; or copy the token from the Bond app.
+- **"Does not answer"**: check the IP address (fix it in your router), that the bridge is on (its light), and that
+  Gladys and the bridge are on the same network.
+- **"Find the bridges" finds nothing**: mDNS does not cross routers or some mesh Wi-Fi settings. Type the address.
+- **The state in Gladys is wrong**: someone used the original remote. Use **Correct the Bond state**.
+- **Test the connection says "no live updates"**: a firewall between Gladys and the bridge may block UDP port 30007.
+  Everything works, a little slower (readings every 30 s).
+- More details in the logs of the integration (`LOG_LEVEL=debug` shows every reading).
+
+## Limits
+
+- **Developed without the hardware**: the behavior follows the Bond documentation, the Home Assistant integration
+  and the `bond-async` library; it was not tried on a real bridge. Feedback welcome.
+- The state is what Bond believes, never a measurement (see above).
+- Fireplaces are read-only, garage doors, air conditioners and bidets are left out.
+- No tilt control of shades, no timers, no Bond groups, no scenes of the Bond app.
+- Up to three bridges.
+- The live updates cross the Docker network of the Gladys sandbox in unicast (keep-alive every 60 s); this was not
+  verified on real hardware. Without them, readings every 30 s take over.
+- Not affiliated with Bond or Olibra. Bond, Bond Bridge and Smart by Bond are trademarks of their owners.

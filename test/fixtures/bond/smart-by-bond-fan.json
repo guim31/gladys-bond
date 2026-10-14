@@ -1,0 +1,68 @@
+{
+  "version": {
+    "target": "snowbird",
+    "fw_ver": "v2.24.7",
+    "fw_date": "Fri Jan 31 21:37:15 UTC 2025",
+    "uptime_s": 2251,
+    "make": "Olibra",
+    "model": "SBB-CF",
+    "branding_profile": "OLIBRA_SBB_CF",
+    "bondid": "KSMJWCE12345",
+    "api": 2,
+    "_": "0b1c2d3e"
+  },
+  "bridge": null,
+  "token": {
+    "locked": 0,
+    "token": "0123456789abcdef",
+    "_": "6a7b8c9d"
+  },
+  "devices": {
+    "a1b2c3d4": {
+      "device": {
+        "name": "Office Fan",
+        "type": "CF",
+        "location": "Office",
+        "actions": [
+          "TurnOn",
+          "TurnOff",
+          "TogglePower",
+          "SetSpeed",
+          "IncreaseSpeed",
+          "DecreaseSpeed",
+          "SetDirection",
+          "ToggleDirection",
+          "TurnLightOn",
+          "TurnLightOff",
+          "ToggleLight",
+          "SetBrightness",
+          "BreezeOn",
+          "BreezeOff",
+          "SetBreeze"
+        ],
+        "properties": {
+          "_": "1a2b3c4d"
+        },
+        "state": {
+          "_": "5e6f7a8b"
+        },
+        "_": "9c0d1e2f"
+      },
+      "properties": {
+        "max_speed": 8,
+        "trust_state": true,
+        "_": "1a2b3c4d"
+      },
+      "state": {
+        "power": 0,
+        "speed": 1,
+        "direction": 1,
+        "light": 0,
+        "brightness": 100,
+        "breeze": [0, 50, 50],
+        "timer": 0,
+        "_": "5e6f7a8b"
+      }
+    }
+  }
+}

@@ -1,8 +1,8 @@
 {
-  "name": "gladys-integration-template-js",
+  "name": "gladys-bond",
   "version": "1.0.0",
   "private": true,
-  "description": "Official starter template to build an external integration for Gladys Assistant with the JavaScript SDK.",
+  "description": "Bond Bridge integration for Gladys Assistant: ceiling fans, shades and lights over the Bond local API.",
   "type": "module",
   "main": "index.js",
   "scripts": {

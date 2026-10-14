@@ -1,77 +1,164 @@
+// -----------------------------------------------------------------------------
+// The "Ceiling fan" widget: a content the core renders as sent (budget,
+// vocabulary), live tiles bound to features that exist, buttons that drive
+// the fan like its remote, a readable sentence when there is nothing to show.
+// -----------------------------------------------------------------------------
+
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateWidgetContent } from '@gladysassistant/integration-sdk';
-import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
-import { buildDiscoveredDevices } from '../src/devices/index.js';
-import { simulateLanSession } from '../src/devices/plug.js';
-import { DEMO_STATUS_WIDGET, WIDGETS, refreshWidgets } from '../src/widgets.js';
-import { normalizeConfig } from '../src/config.js';
+import { WIDGET_KEY } from '../src/hub.js';
+import { TEXT, WIDGET_ACTIONS } from '../src/widgets.js';
+import {
+  BEDROOM_FAN,
+  FAN,
+  SHADES,
+  TOKEN,
+  createDevices,
+  createWorld,
+  ids,
+} from './helpers/world.js';
 
-const gladys = createFakeGladys();
-const config = normalizeConfig();
-const demoStatus = WIDGETS[DEMO_STATUS_WIDGET];
+async function world(t, options) {
+  const w = await createWorld(options);
+  t.after(() => w.stop());
+  await createDevices(w);
+  return w;
+}
 
-// What the SDK passes to onWidgetGet, plus the config index.js adds.
-const getContent = (cfg = config) =>
-  demoStatus.get(gladys, { settings: {}, language: 'en', units: 'metric', config: cfg });
+async function content(w, deviceId, language = 'en') {
+  const ack = await w.fake.widgetGet(WIDGET_KEY, {
+    settings: { device: deviceId ? ids(w, deviceId).device : undefined },
+    language,
+  });
+  assert.equal(ack.success, true, ack.error);
+  return ack.data.content;
+}
 
-test('the demo_status content is rendered exactly as sent', async () => {
-  // [] = nothing the core would drop, truncate or trim to the content budget.
-  assert.deepEqual(validateWidgetContent(await getContent()), []);
-});
+const featureIds = (w) =>
+  new Set(w.fake.discoveredDevices.flatMap((d) => d.features.map((f) => f.external_id)));
 
-test('the degraded plug connection content is valid too', async () => {
-  simulateLanSession(false);
-  try {
-    const content = await getContent();
-    assert.deepEqual(validateWidgetContent(content), []);
-    const status = content.components.find((component) => component.type === 'status');
-    assert.ok(
-      status.items.some((item) => item.color === 'warning'),
-      'degraded shows a warning',
-    );
-  } finally {
-    simulateLanSession(true);
-  }
-});
+for (const [label, deviceId] of [
+  ['dedicated actions, dimmable light', FAN],
+  ['toggle-only remote, breeze', BEDROOM_FAN],
+]) {
+  test(`a fan (${label}): valid content, live tiles on real features`, async (t) => {
+    const w = await world(t);
+    for (const language of ['en', 'fr', 'de', 'es']) {
+      const widget = await content(w, deviceId, language);
+      assert.deepEqual(validateWidgetContent(widget), [], language);
+      assert.ok(widget.components.length <= 8, 'the content budget');
+      const known = featureIds(w);
+      for (const component of widget.components.filter((c) => c.device_feature)) {
+        assert.ok(known.has(component.device_feature), component.device_feature);
+      }
+      const keys = widget.components.filter((c) => c.action).map((c) => c.action.key);
+      assert.equal(new Set(keys).size, keys.length, 'one key per button');
+    }
+  });
+}
 
-test('the live tiles reference features the integration publishes', async () => {
-  const featureIds = new Set(
-    buildDiscoveredDevices(gladys, config).flatMap((device) =>
-      device.features.map((feature) => feature.external_id),
-    ),
+test('the status says what Bond believes, in the language of the dashboard', async (t) => {
+  const w = await world(t);
+  const widget = await content(w, FAN, 'fr');
+  const status = widget.components.find((c) => c.type === 'status');
+  assert.deepEqual(
+    status.items.map((item) => [item.label, item.value]),
+    [
+      ['Ventilateur', 'Allumé'],
+      ['Lumière', 'Allumé'],
+      ['Sens', 'Normal'],
+    ],
   );
-  const liveTiles = (await getContent()).components.filter((c) => c.device_feature);
-  assert.ok(liveTiles.length > 0, 'the template demonstrates a device-bound tile');
-  for (const tile of liveTiles) {
-    assert.ok(featureIds.has(tile.device_feature), `unknown feature ${tile.device_feature}`);
-  }
+  const heading = widget.components.find((c) => c.variant === 'heading');
+  assert.equal(heading.text, 'Living Room Fan');
 });
 
-test('every button action of the content is handled and answers a short toast', async () => {
-  const buttons = (await getContent()).components.filter((c) => c.type === 'button' && c.action);
-  assert.ok(buttons.length > 0, 'the template demonstrates a widget action');
-  for (const { action } of buttons) {
-    const message = await demoStatus.action(gladys, {
-      actionKey: action.key,
-      params: action.params ?? {},
-      settings: {},
-      config,
-    });
-    assert.ok(message.en, 'the toast carries at least the mandatory `en` text');
-    assert.ok(message.en.length <= 200, 'toasts are capped at 200 characters');
-  }
+test('the buttons: faster, slower down to off, light, power', async (t) => {
+  const w = await world(t);
+  const settings = { device: ids(w, FAN).device };
+  const tap = async (key) => {
+    const ack = await w.fake.widgetAction(WIDGET_KEY, key, {}, { settings });
+    assert.equal(ack.success, true, ack.error);
+    return ack.data?.message ?? ack.data;
+  };
+  const speed = () => w.fake.lastState(ids(w, FAN).feature('speed'));
+
+  assert.deepEqual(await tap(WIDGET_ACTIONS.FASTER), {
+    en: 'Speed 4 / 6',
+    fr: 'Vitesse 4 / 6',
+    de: 'Stufe 4 / 6',
+    es: 'Velocidad 4 / 6',
+  });
+  assert.equal(speed(), 4);
+  await tap(WIDGET_ACTIONS.SLOWER);
+  assert.equal(speed(), 3);
+
+  const light = await tap(WIDGET_ACTIONS.LIGHT);
+  assert.equal(light.en, 'Light off');
+  assert.equal(w.fake.lastState(ids(w, FAN).feature('light')), 0);
+
+  const off = await tap(WIDGET_ACTIONS.POWER);
+  assert.equal(off.en, 'Fan off');
+  assert.equal(speed(), 0);
+  assert.equal((await tap(WIDGET_ACTIONS.SLOWER)).en, 'The fan is already off');
+  const on = await tap(WIDGET_ACTIONS.FASTER);
+  assert.equal(on.en, 'Speed 1 / 6');
+  assert.equal(speed(), 1);
 });
 
-test('an unknown widget action fails, so the user sees the error', async () => {
-  await assert.rejects(
-    demoStatus.action(gladys, { actionKey: 'unknown', params: {}, settings: {}, config }),
-    /Unknown widget action/,
+test('a device that is no fan, or none: a sentence, no error', async (t) => {
+  const w = await world(t);
+  for (const deviceId of [SHADES, undefined]) {
+    const widget = await content(w, deviceId);
+    assert.deepEqual(widget.components, [{ type: 'text', variant: 'body', text: TEXT.en.pick }]);
+  }
+  const ack = await w.fake.widgetAction(
+    WIDGET_KEY,
+    WIDGET_ACTIONS.FASTER,
+    {},
+    { settings: { device: ids(w, SHADES).device } },
   );
+  assert.equal(ack.success, false);
 });
 
-test('refreshWidgets nudges every widget', () => {
-  const fresh = createFakeGladys();
-  refreshWidgets(fresh);
-  assert.deepEqual(fresh.fake.widgetRefreshes, Object.keys(WIDGETS));
+test('not configured: the widget says to configure the bridge', async (t) => {
+  const w = await createWorld({ config: { language: 'en' } });
+  t.after(() => w.stop());
+  const widget = await content(w, undefined, 'es');
+  assert.deepEqual(widget.components, [
+    { type: 'text', variant: 'body', text: TEXT.es.notConfigured },
+  ]);
+});
+
+test('a bridge that stopped answering shows in the status', async (t) => {
+  const w = await world(t, {
+    config: (b) => ({ bridge_1_host: b[0].address, bridge_1_token: TOKEN, language: 'en' }),
+  });
+  w.bridge.online = false;
+  w.clock.advance(30_000);
+  w.hub.records.get(1).push.lastMessageAt = null;
+  await w.hub.cycle();
+  const widget = await content(w, FAN);
+  const status = widget.components.find((c) => c.type === 'status');
+  assert.deepEqual(status.items[0], {
+    label: 'Bond bridge',
+    value: 'Unreachable',
+    color: 'danger',
+  });
+  assert.deepEqual(validateWidgetContent(widget), []);
+});
+
+test('a pushed change of a fan asks the widget to refresh', async (t) => {
+  const w = await world(t);
+  const before = w.fake.widgetRefreshes.length;
+  await w.hub.applyState(w.hub.records.get(1), w.hub.records.get(1).devices.get(FAN), {
+    power: 0,
+  });
+  assert.equal(w.fake.widgetRefreshes.length, before + 1);
+  // The same state again: nothing to refresh.
+  await w.hub.applyState(w.hub.records.get(1), w.hub.records.get(1).devices.get(FAN), {
+    power: 0,
+  });
+  assert.equal(w.fake.widgetRefreshes.length, before + 1);
 });

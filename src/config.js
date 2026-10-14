@@ -1,45 +1,107 @@
 // -----------------------------------------------------------------------------
-// Integration configuration.
+// Integration configuration: defaults (they mirror the `default` values of the
+// manifest `config_schema`, see test/manifest.test.js) and normalization, so
+// the rest of the code never deals with strings, blanks or `undefined`.
 //
-// The configuration is filled in by the user in Gladys, from the `config_schema`
-// declared in `gladys-assistant-integration.json`. The SDK fetches it for you
-// (`gladys.getConfig()`) and notifies you of every change through
-// `gladys.onConfigUpdated()`.
-//
-// This module only provides defaults and normalizes the received object, so the
-// rest of the code never has to deal with `undefined`.
+// Up to three Bond bridges (or Smart by Bond devices), each in its own slot
+// (address, local token). The device identity comes from the Bond ID the
+// bridge reports, never from the slot: moving a bridge to another slot, or
+// changing its IP address, keeps its devices and their history.
 // -----------------------------------------------------------------------------
 
-// Defaults: they MUST stay consistent with the `default` values declared in the
-// `config_schema` of the manifest.
+export const LANGUAGES = ['en', 'fr', 'de', 'es'];
+
+export const SLOTS = [1, 2, 3];
+
+// What the integration does with the fireplaces of the bridge:
+//   hidden    — not published at all (default);
+//   read_only — published with read-only features (lit or not, flame level).
+// There is deliberately no "control" mode: see CLAUDE.md, "Fireplaces".
+export const FIREPLACE_MODES = ['hidden', 'read_only'];
+
 export const DEFAULT_CONFIG = {
-  latitude: 48.8566, // Paris
-  longitude: 2.3522,
-  unit: 'celsius', // 'celsius' | 'fahrenheit'
-  // Seconds between two reads of the polled sensors. Gladys polls at most once
-  // a minute: slower intervals are applied by skipping polls (see
-  // createPoller in src/devices/index.js).
-  poll_frequency: 300,
-  // Reserved key (NOT in config_schema): because the manifest declares both
-  // 'local' and 'cloud' in its `transports` field, Gladys shows a standard
-  // "Prefer the local connection" toggle and sends the user's choice here.
-  // Read-only for the integration; defaults to true.
-  GLADYS_PREFER_LOCAL: true,
+  bridge_1_host: '',
+  bridge_1_token: '',
+  bridge_2_host: '',
+  bridge_2_token: '',
+  bridge_3_host: '',
+  bridge_3_token: '',
+  fireplaces: 'hidden',
+  language: 'fr',
 };
 
+// The Bond local API listens on HTTP port 80.
+export const DEFAULT_HTTP_PORT = 80;
+
 /**
- * Merge the user config with the defaults.
- * @param {Record<string, unknown>} raw config returned by the SDK
+ * Parse the address typed by the user: an IP or a host name, optionally with
+ * a port, or the URL copied from a browser (`http://192.0.2.10/`).
+ * @param {unknown} raw
+ * @returns {{ host: string, port: number } | null} null when unusable
+ */
+export function parseHost(raw) {
+  if (typeof raw !== 'string') {
+    return null;
+  }
+  const text = raw.trim();
+  if (!text) {
+    return null;
+  }
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `http://${text}`;
+  let url;
+  try {
+    url = new URL(withScheme);
+  } catch {
+    return null;
+  }
+  // The local API is plain HTTP; credentials in the address would end up in
+  // the logs.
+  if (url.protocol !== 'http:' || !url.hostname || url.username || url.password) {
+    return null;
+  }
+  return {
+    host: url.hostname.replace(/^\[(.*)\]$/, '$1'),
+    port: url.port ? Number(url.port) : DEFAULT_HTTP_PORT,
+  };
+}
+
+/** The address as shown to the user: `host`, or `host:port` when not 80. */
+export const addressOf = ({ host, port }) =>
+  port === DEFAULT_HTTP_PORT ? host : `${host.includes(':') ? `[${host}]` : host}:${port}`;
+
+/**
+ * @param {Record<string, unknown>} raw the configuration returned by the SDK
  */
 export function normalizeConfig(raw = {}) {
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const text = (key) => (typeof source[key] === 'string' ? source[key].trim() : '');
+
+  const bridges = [];
+  const invalidSlots = [];
+  for (const slot of SLOTS) {
+    const typed = text(`bridge_${slot}_host`);
+    if (!typed) {
+      continue;
+    }
+    const address = parseHost(typed);
+    if (!address) {
+      invalidSlots.push(slot);
+      continue;
+    }
+    bridges.push({
+      slot,
+      ...address,
+      // A token is 16 hexadecimal characters: blanks around it are copy noise.
+      token: text(`bridge_${slot}_token`),
+    });
+  }
+
   return {
-    ...DEFAULT_CONFIG,
-    ...raw,
-    // Force the types: config may arrive as strings from a form.
-    latitude: Number(raw.latitude ?? DEFAULT_CONFIG.latitude),
-    longitude: Number(raw.longitude ?? DEFAULT_CONFIG.longitude),
-    poll_frequency: Number(raw.poll_frequency ?? DEFAULT_CONFIG.poll_frequency),
-    // The preference is a boolean; anything but an explicit false means true.
-    GLADYS_PREFER_LOCAL: raw.GLADYS_PREFER_LOCAL !== false,
+    bridges,
+    invalidSlots,
+    fireplaces: FIREPLACE_MODES.includes(source.fireplaces)
+      ? source.fireplaces
+      : DEFAULT_CONFIG.fireplaces,
+    language: LANGUAGES.includes(source.language) ? source.language : DEFAULT_CONFIG.language,
   };
 }

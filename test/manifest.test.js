@@ -7,10 +7,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { DEVICE_BLUEPRINTS, SCENE_TRIGGER_KEYS } from '../src/devices/index.js';
+import { ACTIONS } from '../src/app.js';
+import { BELIEFS } from '../src/bond/model.js';
+import { DEFAULT_CONFIG, FIREPLACE_MODES, LANGUAGES, SLOTS } from '../src/config.js';
+import { TRIGGERS, WIDGET_KEY } from '../src/hub.js';
 import { SCENE_ACTIONS } from '../src/scenes.js';
 import { WIDGETS } from '../src/widgets.js';
-import { DEFAULT_CONFIG } from '../src/config.js';
+import { FAN, TOKEN, createDevices, createWorld, ids } from './helpers/world.js';
 
 const manifest = JSON.parse(
   await readFile(new URL('../gladys-assistant-integration.json', import.meta.url), 'utf8'),
@@ -28,9 +31,6 @@ const allFields = [
   ].flatMap((item) => item.fields ?? []),
   ...(manifest.widgets ?? []).flatMap((widget) => widget.settings ?? []),
 ];
-
-// Actions registered outside the blueprints (see index.js).
-const REGISTRY_LEVEL_ACTIONS = ['identify'];
 
 // Manifest fields older Gladys releases reject as unknown, with the first
 // release accepting them. The store validator refuses a manifest whose
@@ -57,68 +57,115 @@ function isAtLeast(version, required) {
   return true;
 }
 
-test('every manifest action has a registered handler', () => {
-  const handled = new Set([
-    ...DEVICE_BLUEPRINTS.flatMap((bp) => Object.keys(bp.actions ?? {})),
-    ...REGISTRY_LEVEL_ACTIONS,
-  ]);
-  for (const action of manifest.actions ?? []) {
-    assert.ok(handled.has(action.key), `manifest action "${action.key}" has no handler`);
+test('identity: name, image, cover, local transport, catalog categories, mDNS', () => {
+  assert.equal(manifest.name, 'Bond Bridge');
+  assert.equal(manifest.type, 'device');
+  assert.match(manifest.docker_image, /^ghcr\.io\/guim31\/gladys-bond:/);
+  assert.equal(
+    manifest.cover_image,
+    'https://raw.githubusercontent.com/guim31/gladys-bond/main/cover.png',
+  );
+  assert.deepEqual(manifest.transports, ['local']);
+  assert.deepEqual(manifest.categories, ['climate', 'lighting']);
+  // The only capture: the mDNS browse of "Find the bridges".
+  assert.deepEqual(manifest.network_discovery, [{ type: 'mdns', service: '_bond._tcp' }]);
+});
+
+test('every manifest action has a handler, and vice versa', () => {
+  assert.deepEqual(keysOf(manifest.actions).sort(), Object.keys(ACTIONS).sort());
+});
+
+test('the actions without fields run, the "tell state" one needs its two fields', async (t) => {
+  const world = await createWorld();
+  t.after(() => world.stop());
+  await createDevices(world, [FAN]);
+  for (const action of manifest.actions) {
+    const fields = action.fields ? { device: ids(world, FAN).device, state: 'light_on' } : {};
+    // An action applies no default and requires its required fields (core 422).
+    for (const field of action.fields ?? []) {
+      assert.equal(field.default, undefined, `${action.key}.${field.key}: no default in an action`);
+      assert.notEqual(field.type, 'secret', `${action.key}.${field.key}: a secret cannot be typed`);
+    }
+    const ack = await world.fake.action(action.key, fields);
+    if (action.key === 'find_bridges') {
+      continue; // needs the mDNS results, see test/hub.test.js
+    }
+    assert.equal(ack.success, true, `${action.key}: ${ack.error}`);
   }
 });
 
 test('declaring catalog categories requires Gladys >= 4.86.0', () => {
-  // The store vocabulary itself is checked by the store validator (unknown
-  // keys are dropped with a warning there) — what this test pins is the
-  // coupling rule: older cores reject any unknown manifest field, so a
-  // manifest declaring `categories` must not claim compatibility below the
-  // first release that accepts it.
   assert.ok(manifest.categories.length >= 1 && manifest.categories.length <= 3);
-  assert.ok(
-    isAtLeast(minGladysVersion(), CATEGORIES_MIN_GLADYS_VERSION),
-    `categories requires gladys_version >= 4.86.0, got "${manifest.gladys_version}"`,
-  );
+  assert.ok(isAtLeast(minGladysVersion(), CATEGORIES_MIN_GLADYS_VERSION));
 });
 
 test('declaring scene triggers, scene actions or widgets requires Gladys >= 5.1.0', () => {
   const declared = CAPABILITY_FIELDS.filter((field) => manifest[field] !== undefined);
-  assert.ok(declared.length > 0, 'the template demonstrates the capability fields');
-  assert.ok(
-    isAtLeast(minGladysVersion(), CAPABILITY_MIN_GLADYS_VERSION),
-    `${declared.join(', ')} requires gladys_version >= 5.1.0, got "${manifest.gladys_version}"`,
-  );
+  assert.deepEqual(declared, CAPABILITY_FIELDS);
+  assert.ok(isAtLeast(minGladysVersion(), CAPABILITY_MIN_GLADYS_VERSION));
+  // No widget button opens a form (#3168, Gladys 5.2.0): 5.1.0 is enough.
+  assert.equal(manifest.gladys_version, '>=5.1.0');
 });
 
-test('every scene_actions key has an onSceneAction handler, and vice versa', () => {
-  const declared = keysOf(manifest.scene_actions);
-  for (const key of declared) {
-    assert.equal(typeof SCENE_ACTIONS[key], 'function', `scene action "${key}" has no handler`);
-  }
-  for (const key of Object.keys(SCENE_ACTIONS)) {
-    assert.ok(declared.includes(key), `handler "${key}" is not declared in scene_actions`);
-  }
+test('every scene_actions key has a handler, and vice versa', () => {
+  assert.deepEqual(keysOf(manifest.scene_actions).sort(), Object.keys(SCENE_ACTIONS).sort());
 });
 
-test('every widgets key has an onWidgetGet handler, and vice versa', () => {
-  const declared = keysOf(manifest.widgets);
-  for (const key of declared) {
-    assert.equal(typeof WIDGETS[key]?.get, 'function', `widget "${key}" has no content handler`);
-  }
-  for (const key of Object.keys(WIDGETS)) {
-    assert.ok(declared.includes(key), `widget "${key}" is not declared in widgets`);
+test('the "tell state" options are the beliefs the code knows', () => {
+  const declarations = [
+    manifest.actions.find((action) => action.key === 'tell_state'),
+    manifest.scene_actions.find((action) => action.key === 'tell_state'),
+  ];
+  for (const declaration of declarations) {
+    const state = declaration.fields.find((field) => field.key === 'state');
+    assert.deepEqual(state.options.map((o) => o.value).sort(), Object.keys(BELIEFS).sort());
+    assert.ok(declaration.fields.every((field) => field.required === true));
   }
 });
 
-test('every scene trigger the code fires is declared in scene_triggers, and vice versa', () => {
-  // An undeclared key is a 404 on publishSceneEvent; a declared key nobody
-  // fires is a dead card in the scene editor.
-  const declared = keysOf(manifest.scene_triggers);
-  for (const key of SCENE_TRIGGER_KEYS) {
-    assert.ok(declared.includes(key), `trigger "${key}" is fired but not declared`);
+test('every widgets key has a handler, and vice versa', () => {
+  assert.deepEqual(keysOf(manifest.widgets), [WIDGET_KEY]);
+  assert.deepEqual(Object.keys(WIDGETS), [WIDGET_KEY]);
+});
+
+test('the scene triggers are the ones the hub fires, with their variables', async (t) => {
+  assert.deepEqual(keysOf(manifest.scene_triggers).sort(), Object.values(TRIGGERS).sort());
+  const world = await createWorld();
+  t.after(() => world.stop());
+  world.bridge.online = false;
+  for (let i = 0; i < 2; i += 1) {
+    world.clock.advance(30_000);
+    world.hub.records.get(1).push.lastMessageAt = null; // no keep-alive answer either
+    await world.hub.cycle();
   }
-  for (const key of declared) {
-    assert.ok(SCENE_TRIGGER_KEYS.includes(key), `trigger "${key}" is declared but never fired`);
+  world.bridge.online = true;
+  world.clock.advance(30_000);
+  await world.hub.cycle();
+  for (const trigger of manifest.scene_triggers) {
+    const event = world.fake.sceneEvents.find((e) => e.key === trigger.key);
+    assert.ok(event, `${trigger.key} never fired`);
+    assert.deepEqual(
+      Object.keys(event.data).sort(),
+      keysOf(trigger.variables).sort(),
+      `${trigger.key}: the data are the declared variables`,
+    );
   }
+});
+
+test('the configuration: three bridge slots, the fireplace modes, the languages', () => {
+  for (const slot of SLOTS) {
+    const host = manifest.config_schema.find((field) => field.key === `bridge_${slot}_host`);
+    const token = manifest.config_schema.find((field) => field.key === `bridge_${slot}_token`);
+    assert.equal(host.type, 'string');
+    assert.equal(token.type, 'secret', 'the token is a secret field');
+    assert.equal(token.default, undefined);
+  }
+  const options = (key) =>
+    manifest.config_schema.find((field) => field.key === key).options.map((o) => o.value);
+  assert.deepEqual(options('fireplaces'), FIREPLACE_MODES);
+  assert.deepEqual(options('language'), LANGUAGES);
+  // The token placeholder in tests is no real token.
+  assert.equal(TOKEN.length, 16);
 });
 
 test('config_schema defaults stay consistent with DEFAULT_CONFIG', () => {
@@ -135,7 +182,7 @@ test('config_schema defaults stay consistent with DEFAULT_CONFIG', () => {
 
 test('section fields are purely presentational', () => {
   const sections = manifest.config_schema.filter((f) => f.type === 'section');
-  assert.ok(sections.length > 0, 'the template demonstrates at least one section block');
+  assert.ok(sections.length > 0);
   for (const section of sections) {
     // A section stores NO value: declaring `required`, `default` or
     // `placeholder` on it rejects the manifest, and its key must never leak
@@ -160,7 +207,7 @@ test('section fields are purely presentational', () => {
 
 test('dynamic selects declare a source and no static options', () => {
   const dynamicSelects = allFields.filter((f) => f.source !== undefined);
-  assert.ok(dynamicSelects.length > 0, 'the template demonstrates a dynamic select');
+  assert.ok(dynamicSelects.length > 0);
   for (const field of dynamicSelects) {
     assert.equal(field.source, 'devices', 'the only core-defined source in V1 is "devices"');
     assert.equal(
@@ -196,7 +243,7 @@ test('the catalog description holds 10 to 100 characters per language', () => {
 test('field placeholders are multi-language objects', () => {
   // Like `label` and `description`: a plain string rejects the manifest.
   const withPlaceholder = allFields.filter((f) => f.placeholder !== undefined);
-  assert.ok(withPlaceholder.length > 0, 'the template demonstrates a placeholder');
+  assert.ok(withPlaceholder.length > 0);
   for (const field of withPlaceholder) {
     assert.equal(typeof field.placeholder, 'object', `field "${field.key}": placeholder`);
     assert.ok(field.placeholder.en, `field "${field.key}": placeholder needs an English text`);

@@ -1,33 +1,51 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeConfig, DEFAULT_CONFIG } from '../src/config.js';
+import { DEFAULT_CONFIG, addressOf, normalizeConfig, parseHost } from '../src/config.js';
 
-test('normalizeConfig returns the defaults when called with no argument', () => {
-  assert.deepEqual(normalizeConfig(), DEFAULT_CONFIG);
+test('an address is an IP, a name, with a port or a pasted URL', () => {
+  assert.deepEqual(parseHost('192.0.2.20'), { host: '192.0.2.20', port: 80 });
+  assert.deepEqual(parseHost(' bond-zzbl12345.local '), { host: 'bond-zzbl12345.local', port: 80 });
+  assert.deepEqual(parseHost('http://192.0.2.20/'), { host: '192.0.2.20', port: 80 });
+  assert.deepEqual(parseHost('192.0.2.20:8080'), { host: '192.0.2.20', port: 8080 });
+  assert.equal(addressOf({ host: '192.0.2.20', port: 8080 }), '192.0.2.20:8080');
+  assert.equal(addressOf({ host: '192.0.2.20', port: 80 }), '192.0.2.20');
 });
 
-test('normalizeConfig keeps user values over the defaults', () => {
-  const config = normalizeConfig({ latitude: 45.5, longitude: -73.6, unit: 'fahrenheit' });
-  assert.equal(config.latitude, 45.5);
-  assert.equal(config.longitude, -73.6);
-  assert.equal(config.unit, 'fahrenheit');
+test('an address that cannot be the local API is refused', () => {
+  for (const raw of [
+    '',
+    '   ',
+    'https://192.0.2.20',
+    'http://user:pass@192.0.2.20',
+    'ht tp://x',
+    42,
+  ]) {
+    assert.equal(parseHost(raw), null, String(raw));
+  }
 });
 
-test('normalizeConfig coerces numeric strings coming from a form', () => {
-  const config = normalizeConfig({ latitude: '48.8', longitude: '2.3', poll_frequency: '600' });
-  assert.equal(config.latitude, 48.8);
-  assert.equal(config.longitude, 2.3);
-  assert.equal(config.poll_frequency, 600);
-  assert.equal(typeof config.poll_frequency, 'number');
+test('the defaults: no bridge, fireplaces hidden, French names', () => {
+  const config = normalizeConfig({});
+  assert.deepEqual(config, { bridges: [], invalidSlots: [], fireplaces: 'hidden', language: 'fr' });
+  assert.deepEqual(normalizeConfig(DEFAULT_CONFIG), config);
+  assert.deepEqual(normalizeConfig(null), config);
 });
 
-test('normalizeConfig falls back to the default for a missing numeric field', () => {
-  const config = normalizeConfig({ unit: 'celsius' });
-  assert.equal(config.poll_frequency, DEFAULT_CONFIG.poll_frequency);
-});
-
-test('GLADYS_PREFER_LOCAL defaults to true and only an explicit false disables it', () => {
-  assert.equal(normalizeConfig().GLADYS_PREFER_LOCAL, true);
-  assert.equal(normalizeConfig({ GLADYS_PREFER_LOCAL: true }).GLADYS_PREFER_LOCAL, true);
-  assert.equal(normalizeConfig({ GLADYS_PREFER_LOCAL: false }).GLADYS_PREFER_LOCAL, false);
+test('three slots, each with its token; a bad address is reported, not dropped silently', () => {
+  const config = normalizeConfig({
+    bridge_1_host: '192.0.2.20',
+    bridge_1_token: ' 0123456789abcdef ',
+    bridge_2_host: 'https://nope',
+    bridge_3_host: '192.0.2.22',
+    fireplaces: 'read_only',
+    language: 'de',
+  });
+  assert.deepEqual(config.bridges, [
+    { slot: 1, host: '192.0.2.20', port: 80, token: '0123456789abcdef' },
+    { slot: 3, host: '192.0.2.22', port: 80, token: '' },
+  ]);
+  assert.deepEqual(config.invalidSlots, [2]);
+  assert.equal(config.fireplaces, 'read_only');
+  assert.equal(config.language, 'de');
+  assert.equal(normalizeConfig({ fireplaces: 'control', language: 'it' }).fireplaces, 'hidden');
 });
