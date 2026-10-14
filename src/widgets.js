@@ -1,169 +1,306 @@
 // -----------------------------------------------------------------------------
-// Dashboard widgets (SDK v0.14+, Gladys 5.1+).
+// Dashboard widget "Ceiling fan" (manifest `widgets`): one fan chosen in the
+// widget settings, its speed as a live tile, its state, and four buttons —
+// slower, faster, light, on/off — the controls a wall remote has.
 //
-// A widget puts the integration's own data on the Gladys dashboard without a
-// dedicated core widget. The manifest `widgets` field declares its identity
-// (key, label, icon, optional per-instance `settings`); at runtime the
-// integration returns a DECLARATIVE content — `text`, `value`, `gauge`,
-// `status`, `chart`, `card-list`, `image`, `button` — that the core renders
-// with its own theme, dark mode and translations. No HTML, no CSS.
-//
-// Each entry of WIDGETS is keyed by the widget `key` and exposes:
-//   - get(gladys, { settings, language, units, config }): the content,
-//     registered by index.js with `gladys.onWidgetGet(key, ...)`;
-//   - action(gladys, { actionKey, params, settings, config }) (optional): a
-//     tapped `button` carrying an `action`, registered with
-//     `gladys.onWidgetAction`.
-//
-// Check your contents in the tests with `validateWidgetContent` (exported by
-// the SDK, see test/widgets.test.js), or run with DEBUG=gladys-integration-sdk
-// to have the SDK log every violation of the vocabulary and the budget.
+// The content is built from the state the hub keeps (push or reading): no
+// request to the bridge when Gladys pulls it. The buttons go through the same
+// commands as the device features.
 // -----------------------------------------------------------------------------
 
-import {
-  createLogger,
-  DEVICE_FEATURE_CATEGORIES,
-  DEVICE_TRANSPORTS,
-  WIDGET_COLORS,
-} from '@gladysassistant/integration-sdk';
-import { identifyDevice } from './devices/index.js';
-import { weatherStation } from './devices/weatherStation.js';
-import { plug } from './devices/plug.js';
-import { light } from './devices/light.js';
+import { WIDGET_COLORS } from '@gladysassistant/integration-sdk';
+import { AIRFLOW, FEATURES, KINDS, describe, featureValues, maxSpeedOf } from './bond/model.js';
+import { deviceIds, displayName } from './devices.js';
+import { WIDGET_KEY } from './hub.js';
+import { inEveryLanguage } from './texts.js';
 
-const logger = createLogger({ name: 'widgets' });
+// Button action keys: one per button, never reused (the core drops a button
+// whose key is already taken), permanent once published.
+export const WIDGET_ACTIONS = Object.freeze({
+  SLOWER: 'speed_down',
+  FASTER: 'speed_up',
+  LIGHT: 'light_toggle',
+  POWER: 'power_toggle',
+});
 
-// Widget key, as declared in the manifest `widgets` field.
-export const DEMO_STATUS_WIDGET = 'demo_status';
-
-// Keys of the `button` actions the demo_status content declares.
-const DEMO_STATUS_ACTIONS = { IDENTIFY_LIGHT: 'identify_light' };
-
-// How the plug transport reads in the status list.
-const TRANSPORT_STATUS = {
-  [DEVICE_TRANSPORTS.LOCAL]: { value: { en: 'Local', fr: 'Locale' }, color: WIDGET_COLORS.SUCCESS },
-  [DEVICE_TRANSPORTS.CLOUD]: { value: { en: 'Cloud', fr: 'Cloud' }, color: WIDGET_COLORS.INFO },
-  [DEVICE_TRANSPORTS.UNREACHABLE]: {
-    value: { en: 'Unreachable', fr: 'Injoignable' },
-    color: WIDGET_COLORS.DANGER,
+export const TEXT = {
+  en: {
+    speed: 'Speed',
+    brightness: 'Light',
+    fan: 'Fan',
+    light: 'Light',
+    direction: 'Direction',
+    breeze: 'Breeze',
+    on: 'On',
+    off: 'Off',
+    forward: 'Forward',
+    reverse: 'Reverse',
+    slower: 'Slower',
+    faster: 'Faster',
+    turnOn: 'Turn on',
+    turnOff: 'Turn off',
+    pick: 'Choose a ceiling fan in the settings of this widget.',
+    notConfigured: 'Configure your Bond bridge in the integration first.',
+    bridge: 'Bond bridge',
+    offline: 'Unreachable',
+    speedToast: (speed, max) => `Speed ${speed} / ${max}`,
+    offToast: 'Fan off',
+    onToast: 'Fan on',
+    lightOnToast: 'Light on',
+    lightOffToast: 'Light off',
+    alreadyOff: 'The fan is already off',
+  },
+  fr: {
+    speed: 'Vitesse',
+    brightness: 'Lumière',
+    fan: 'Ventilateur',
+    light: 'Lumière',
+    direction: 'Sens',
+    breeze: 'Brise',
+    on: 'Allumé',
+    off: 'Éteint',
+    forward: 'Normal',
+    reverse: 'Inversé',
+    slower: 'Moins vite',
+    faster: 'Plus vite',
+    turnOn: 'Allumer',
+    turnOff: 'Éteindre',
+    pick: 'Choisissez un ventilateur de plafond dans les réglages de ce widget.',
+    notConfigured: "Configurez d'abord votre bridge Bond dans l'intégration.",
+    bridge: 'Bridge Bond',
+    offline: 'Injoignable',
+    speedToast: (speed, max) => `Vitesse ${speed} / ${max}`,
+    offToast: 'Ventilateur éteint',
+    onToast: 'Ventilateur allumé',
+    lightOnToast: 'Lumière allumée',
+    lightOffToast: 'Lumière éteinte',
+    alreadyOff: 'Le ventilateur est déjà éteint',
+  },
+  de: {
+    speed: 'Stufe',
+    brightness: 'Licht',
+    fan: 'Ventilator',
+    light: 'Licht',
+    direction: 'Richtung',
+    breeze: 'Brise',
+    on: 'An',
+    off: 'Aus',
+    forward: 'Vorwärts',
+    reverse: 'Rückwärts',
+    slower: 'Langsamer',
+    faster: 'Schneller',
+    turnOn: 'Einschalten',
+    turnOff: 'Ausschalten',
+    pick: 'Wähle in den Einstellungen dieses Widgets einen Deckenventilator.',
+    notConfigured: 'Konfiguriere zuerst deine Bond Bridge in der Integration.',
+    bridge: 'Bond Bridge',
+    offline: 'Nicht erreichbar',
+    speedToast: (speed, max) => `Stufe ${speed} / ${max}`,
+    offToast: 'Ventilator aus',
+    onToast: 'Ventilator an',
+    lightOnToast: 'Licht an',
+    lightOffToast: 'Licht aus',
+    alreadyOff: 'Der Ventilator ist schon aus',
+  },
+  es: {
+    speed: 'Velocidad',
+    brightness: 'Luz',
+    fan: 'Ventilador',
+    light: 'Luz',
+    direction: 'Sentido',
+    breeze: 'Brisa',
+    on: 'Encendido',
+    off: 'Apagado',
+    forward: 'Normal',
+    reverse: 'Inverso',
+    slower: 'Más lento',
+    faster: 'Más rápido',
+    turnOn: 'Encender',
+    turnOff: 'Apagar',
+    pick: 'Elija un ventilador de techo en los ajustes de este widget.',
+    notConfigured: 'Configure primero su Bond Bridge en la integración.',
+    bridge: 'Bond Bridge',
+    offline: 'Inaccesible',
+    speedToast: (speed, max) => `Velocidad ${speed} / ${max}`,
+    offToast: 'Ventilador apagado',
+    onToast: 'Ventilador encendido',
+    lightOnToast: 'Luz encendida',
+    lightOffToast: 'Luz apagada',
+    alreadyOff: 'El ventilador ya está apagado',
   },
 };
 
-// A live tile references a feature by its external_id: read it from the
-// discovery payload itself, so the widget and the device never disagree.
-function featureExternalId(gladys, config, blueprint, category) {
-  const device = blueprint.buildDevice(gladys, config);
-  return device.features.find((feature) => feature.category === category).external_id;
+const textsOf = (language) => TEXT[language] ?? TEXT.en;
+const message = (text) => ({ type: 'text', variant: 'body', text });
+
+/** The fan of the widget settings, or null. */
+function fanOf(hub, settings) {
+  const found = settings?.device ? hub.find(settings.device) : null;
+  if (!found) {
+    return null;
+  }
+  const { kind, features } = describe(found.entry.device, hub.config);
+  if (kind !== KINDS.FAN || features.length === 0) {
+    return null;
+  }
+  const keys = features.map((feature) => feature.key);
+  const values = Object.fromEntries(
+    featureValues(keys, found.entry.state).map(({ key, value }) => [key, value]),
+  );
+  return { ...found, keys, values };
 }
 
-function plugConnectionStatus(gladys, config) {
-  const { transport, degraded } = plug.transport(gladys, config);
-  const { value, color } = TRANSPORT_STATUS[transport];
-  if (degraded) {
-    return {
-      value: { en: `${value.en} (degraded mode)`, fr: `${value.fr} (mode dégradé)` },
-      color: WIDGET_COLORS.WARNING,
-    };
+/** Whether the fan turns, as far as Bond believes. */
+const isOn = ({ values }) =>
+  values[FEATURES.POWER] !== undefined && values[FEATURES.POWER] !== null
+    ? values[FEATURES.POWER] === 1
+    : (values[FEATURES.SPEED] ?? 0) > 0;
+
+/**
+ * The widget content (pure: the hub is only read).
+ * @param {import('./hub.js').BondHub} hub
+ * @param {{ settings?: object, language?: string }} request
+ */
+export function buildFanContent(hub, { settings, language } = {}) {
+  const text = textsOf(language);
+  if (hub.config.bridges.length === 0) {
+    return { ttl_seconds: 300, components: [message(text.notConfigured)] };
   }
-  return { value, color };
+  const fan = fanOf(hub, settings);
+  if (!fan) {
+    return { ttl_seconds: 300, components: [message(text.pick)] };
+  }
+  const { record, entry, keys, values } = fan;
+  const ids = deviceIds(hub.gladys, record.bondId, entry.device.id);
+  const has = (key) => keys.includes(key);
+  const components = [
+    { type: 'text', variant: 'heading', text: displayName(entry.device).slice(0, 40) },
+  ];
+  if (has(FEATURES.SPEED)) {
+    components.push({
+      type: 'value',
+      label: text.speed,
+      icon: 'wind',
+      device_feature: ids.feature(FEATURES.SPEED),
+    });
+  }
+  if (has(FEATURES.BRIGHTNESS)) {
+    components.push({
+      type: 'value',
+      label: text.brightness,
+      icon: 'sun',
+      device_feature: ids.feature(FEATURES.BRIGHTNESS),
+    });
+  }
+
+  const on = isOn(fan);
+  const items = [
+    {
+      label: text.fan,
+      value: on ? text.on : text.off,
+      color: on ? WIDGET_COLORS.SUCCESS : WIDGET_COLORS.NEUTRAL,
+    },
+  ];
+  if (has(FEATURES.LIGHT) && values[FEATURES.LIGHT] !== null) {
+    const lit = values[FEATURES.LIGHT] === 1;
+    items.push({
+      label: text.light,
+      value: lit ? text.on : text.off,
+      color: lit ? WIDGET_COLORS.WARNING : WIDGET_COLORS.NEUTRAL,
+    });
+  }
+  if (has(FEATURES.DIRECTION) && values[FEATURES.DIRECTION] !== null) {
+    items.push({
+      label: text.direction,
+      value: values[FEATURES.DIRECTION] === AIRFLOW.REVERSE ? text.reverse : text.forward,
+      color: WIDGET_COLORS.INFO,
+    });
+  }
+  if (has(FEATURES.BREEZE) && values[FEATURES.BREEZE] === 1) {
+    items.push({ label: text.breeze, value: text.on, color: WIDGET_COLORS.INFO });
+  }
+  if (record.error) {
+    items.unshift({ label: text.bridge, value: text.offline, color: WIDGET_COLORS.DANGER });
+  }
+  components.push({ type: 'status', items });
+
+  if (has(FEATURES.SPEED)) {
+    components.push(
+      { type: 'button', label: text.slower, icon: 'minus', action: { key: WIDGET_ACTIONS.SLOWER } },
+      { type: 'button', label: text.faster, icon: 'plus', action: { key: WIDGET_ACTIONS.FASTER } },
+    );
+  }
+  if (has(FEATURES.LIGHT)) {
+    components.push({
+      type: 'button',
+      label: text.light,
+      // The current choice is told by the icon, never by the style (#3153).
+      icon: values[FEATURES.LIGHT] === 1 ? 'check-circle' : 'sun',
+      action: { key: WIDGET_ACTIONS.LIGHT },
+    });
+  }
+  if (has(FEATURES.POWER) || has(FEATURES.SPEED)) {
+    components.push({
+      type: 'button',
+      label: on ? text.turnOff : text.turnOn,
+      icon: 'power',
+      action: { key: WIDGET_ACTIONS.POWER },
+    });
+  }
+  return { ttl_seconds: 60, components };
+}
+
+/**
+ * A button of the widget: the same commands as the device features.
+ * @returns {Promise<object>} the toast, in every language
+ */
+export async function runFanAction(hub, { actionKey, settings }) {
+  const fan = fanOf(hub, settings);
+  if (!fan) {
+    throw new Error(TEXT.en.pick);
+  }
+  const { record, entry, keys, values } = fan;
+  const max = maxSpeedOf(entry.device);
+  const speed = values[FEATURES.SPEED] ?? 0;
+  const on = isOn(fan);
+  const run = (key, value) => hub.command(record, entry, key, value);
+  const toast = (render) => inEveryLanguage((language) => render(textsOf(language)));
+
+  switch (actionKey) {
+    case WIDGET_ACTIONS.FASTER: {
+      const next = Math.min(max, (on ? speed : 0) + 1);
+      await run(FEATURES.SPEED, next);
+      return toast((text) => text.speedToast(next, max));
+    }
+    case WIDGET_ACTIONS.SLOWER: {
+      if (!on || speed <= 0) {
+        return toast((text) => text.alreadyOff);
+      }
+      const next = speed - 1;
+      await run(FEATURES.SPEED, next);
+      return toast((text) => (next === 0 ? text.offToast : text.speedToast(next, max)));
+    }
+    case WIDGET_ACTIONS.LIGHT: {
+      const lit = values[FEATURES.LIGHT] === 1;
+      await run(FEATURES.LIGHT, lit ? 0 : 1);
+      return toast((text) => (lit ? text.lightOffToast : text.lightOnToast));
+    }
+    case WIDGET_ACTIONS.POWER: {
+      if (keys.includes(FEATURES.POWER)) {
+        await run(FEATURES.POWER, on ? 0 : 1);
+      } else {
+        await run(FEATURES.SPEED, on ? 0 : 1);
+      }
+      return toast((text) => (on ? text.offToast : text.onToast));
+    }
+    default:
+      throw new Error(`Unknown widget action ${actionKey}`);
+  }
 }
 
 export const WIDGETS = {
-  [DEMO_STATUS_WIDGET]: {
-    // `settings` holds the per-instance values of the declared `settings`
-    // (none here); `language` and `units` are those of the user viewing the
-    // dashboard, for the values you format yourself. Multi-language objects
-    // (`{ en, fr }`) are picked by the core, like everywhere else.
-    async get(gladys, { config }) {
-      logger.debug(`onWidgetGet <- ${DEMO_STATUS_WIDGET}`);
-      return {
-        // Reload policy: the computed parts below only change with the
-        // config, and index.js nudges the widget on every (re)connection and
-        // config update (see refreshWidgets) — the TTL is just a safety net.
-        ttl_seconds: 300,
-        components: [
-          // Device-bound tiles: LIVE, they follow the published states over
-          // the core's real-time path. No TTL, no nudge involved.
-          {
-            type: 'value',
-            label: { en: 'Temperature', fr: 'Température' },
-            icon: 'thermometer',
-            device_feature: featureExternalId(
-              gladys,
-              config,
-              weatherStation,
-              DEVICE_FEATURE_CATEGORIES.TEMPERATURE_SENSOR,
-            ),
-          },
-          {
-            type: 'value',
-            label: { en: 'Office plug', fr: 'Prise du bureau' },
-            icon: 'zap',
-            device_feature: featureExternalId(
-              gladys,
-              config,
-              plug,
-              DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
-            ),
-          },
-          // Computed rows: what the integration knows that no device feature
-          // carries. Served from the core cache until the TTL or a nudge.
-          {
-            type: 'status',
-            items: [
-              {
-                label: { en: 'Plug connection', fr: 'Connexion de la prise' },
-                icon: 'wifi',
-                ...plugConnectionStatus(gladys, config),
-              },
-              {
-                label: { en: 'Observed location', fr: 'Position observée' },
-                icon: 'map-pin',
-                value: `${config.latitude.toFixed(2)}, ${config.longitude.toFixed(2)}`,
-                color: WIDGET_COLORS.NEUTRAL,
-              },
-            ],
-          },
-          // `params` are declared HERE and sent back as-is: the handler never
-          // receives user input (a dashboard can hang on a public wall).
-          {
-            type: 'button',
-            label: { en: 'Identify the light', fr: 'Identifier la lampe' },
-            icon: 'eye',
-            style: 'secondary',
-            action: {
-              key: DEMO_STATUS_ACTIONS.IDENTIFY_LIGHT,
-              params: { device: light.deviceExternalId(gladys) },
-            },
-          },
-        ],
-      };
-    },
-
-    // Resolve an optional toast (string or multi-language object, ≤ 200
-    // characters). After a successful action the core drops the cached
-    // content and every open dashboard refetches it: no nudge needed.
-    async action(gladys, { actionKey, params, config }) {
-      logger.info(`onWidgetAction <- ${DEMO_STATUS_WIDGET}.${actionKey}`);
-      if (actionKey === DEMO_STATUS_ACTIONS.IDENTIFY_LIGHT) {
-        return identifyDevice(gladys, params.device, config);
-      }
-      // Throwing acks the action as failed: the message reaches the user.
-      throw new Error(`Unknown widget action: ${actionKey}`);
-    },
+  [WIDGET_KEY]: {
+    get: async (hub, request) => buildFanContent(hub, request),
+    action: (hub, request) => runFanAction(hub, request),
   },
 };
-
-/**
- * Freshness nudge: ask the core to re-pull every widget NOW instead of
- * waiting for the content TTL. Call it when you KNOW a computed content
- * changed (here: the config, which drives the plug transport and the observed
- * location) — and after every (re)connection, since the nudges are
- * fire-and-forget: rate-limited core-side to 1 per 10 s per widget, dropped
- * silently while disconnected.
- */
-export function refreshWidgets(gladys) {
-  for (const key of Object.keys(WIDGETS)) {
-    gladys.requestWidgetRefresh(key);
-  }
-}

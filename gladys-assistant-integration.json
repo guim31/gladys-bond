@@ -1,177 +1,688 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "Bond Bridge",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "Bond Bridge ceiling fans, shades and lights: local control, live state, fan widget.",
+    "fr": "Ventilateurs de plafond, stores et lumières du Bond Bridge : pilotage local, état en direct.",
+    "de": "Deckenventilatoren, Rollos und Lichter der Bond Bridge: lokale Steuerung, Live-Zustand.",
+    "es": "Ventiladores de techo, persianas y luces del Bond Bridge: control local, estado en directo."
   },
   "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
+  "docker_image": "ghcr.io/guim31/gladys-bond:1.0.0",
   "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "cover_image": "https://raw.githubusercontent.com/guim31/gladys-bond/main/cover.png",
+  "categories": ["climate", "lighting"],
+  "transports": ["local"],
+  "network_discovery": [
+    {
+      "type": "mdns",
+      "service": "_bond._tcp"
+    }
+  ],
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": {
+        "en": "Your Bond bridge",
+        "fr": "Votre bridge Bond",
+        "de": "Deine Bond Bridge",
+        "es": "Su Bond Bridge"
+      },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "Bond Bridge, Bond Bridge Pro or Smart by Bond device, set up in the Bond app first. Press \"Find the bridges\" below to fill in the address, then \"Get the local token\" within 10 minutes of plugging the bridge back in. Up to three bridges.",
+        "fr": "Bond Bridge, Bond Bridge Pro ou appareil Smart by Bond, installé d'abord dans l'application Bond. Appuyez sur « Trouver les bridges » plus bas pour remplir l'adresse, puis sur « Récupérer le jeton local » dans les 10 minutes qui suivent le rebranchement du bridge. Jusqu'à trois bridges.",
+        "de": "Bond Bridge, Bond Bridge Pro oder Smart-by-Bond-Gerät, zuerst in der Bond-App eingerichtet. Drück unten auf „Bridges suchen“, um die Adresse einzutragen, dann innerhalb von 10 Minuten nach dem Wiedereinstecken der Bridge auf „Lokalen Token abrufen“. Bis zu drei Bridges.",
+        "es": "Bond Bridge, Bond Bridge Pro o dispositivo Smart by Bond, configurado primero en la aplicación Bond. Pulse «Buscar los bridges» más abajo para rellenar la dirección y luego «Obtener el token local» en los 10 minutos siguientes a volver a enchufar el bridge. Hasta tres bridges."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://docs-local.appbond.com/",
+          "label": {
+            "en": "Bond local API",
+            "fr": "API locale Bond",
+            "de": "Lokale Bond-API",
+            "es": "API local de Bond"
+          }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
-      "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
+      "key": "bridge_1_host",
+      "type": "string",
+      "label": {
+        "en": "IP address",
+        "fr": "Adresse IP",
+        "de": "IP-Adresse",
+        "es": "Dirección IP"
       },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
-      "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
-    },
-    {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
       "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
+        "en": "Address of the Bond bridge on your network. Fix it in your router (DHCP reservation).",
+        "fr": "Adresse du bridge Bond sur votre réseau. Fixez-la dans votre box (bail DHCP réservé).",
+        "de": "Adresse der Bond Bridge in deinem Netzwerk. Leg sie im Router fest (DHCP-Reservierung).",
+        "es": "Dirección del Bond Bridge en su red. Fíjela en su router (reserva DHCP)."
       },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
-      "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
-    },
-    {
-      "key": "unit",
-      "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
+      "placeholder": {
+        "en": "e.g. 192.168.1.20",
+        "fr": "ex. 192.168.1.20",
+        "de": "z. B. 192.168.1.20",
+        "es": "p. ej. 192.168.1.20"
+      },
       "required": false,
-      "default": "celsius",
+      "default": ""
+    },
+    {
+      "key": "bridge_1_token",
+      "type": "secret",
+      "label": {
+        "en": "Local token",
+        "fr": "Jeton local",
+        "de": "Lokaler Token",
+        "es": "Token local"
+      },
+      "description": {
+        "en": "16 characters. Bond app: the bridge, Settings, Advanced, Local token. Or the \"Get the local token\" button below.",
+        "fr": "16 caractères. Application Bond : le bridge, Réglages, Avancé, Local token. Ou le bouton « Récupérer le jeton local » plus bas.",
+        "de": "16 Zeichen. Bond-App: die Bridge, Settings, Advanced, Local token. Oder der Knopf „Lokalen Token abrufen“ weiter unten.",
+        "es": "16 caracteres. Aplicación Bond: el bridge, Settings, Advanced, Local token. O el botón «Obtener el token local» más abajo."
+      },
+      "required": false
+    },
+    {
+      "key": "bridge_2",
+      "type": "section",
+      "label": {
+        "en": "Second bridge (optional)",
+        "fr": "Deuxième bridge (facultatif)",
+        "de": "Zweite Bridge (optional)",
+        "es": "Segundo bridge (opcional)"
+      },
+      "description": {
+        "en": "Same fields, for another Bond bridge or Smart by Bond device.",
+        "fr": "Mêmes champs, pour un autre bridge Bond ou appareil Smart by Bond.",
+        "de": "Dieselben Felder, für eine weitere Bond Bridge oder ein Smart-by-Bond-Gerät.",
+        "es": "Los mismos campos, para otro Bond Bridge o dispositivo Smart by Bond."
+      }
+    },
+    {
+      "key": "bridge_2_host",
+      "type": "string",
+      "label": {
+        "en": "IP address",
+        "fr": "Adresse IP",
+        "de": "IP-Adresse",
+        "es": "Dirección IP"
+      },
+      "description": {
+        "en": "Address of the Bond bridge on your network. Fix it in your router (DHCP reservation).",
+        "fr": "Adresse du bridge Bond sur votre réseau. Fixez-la dans votre box (bail DHCP réservé).",
+        "de": "Adresse der Bond Bridge in deinem Netzwerk. Leg sie im Router fest (DHCP-Reservierung).",
+        "es": "Dirección del Bond Bridge en su red. Fíjela en su router (reserva DHCP)."
+      },
+      "placeholder": {
+        "en": "e.g. 192.168.1.20",
+        "fr": "ex. 192.168.1.20",
+        "de": "z. B. 192.168.1.20",
+        "es": "p. ej. 192.168.1.20"
+      },
+      "required": false,
+      "default": ""
+    },
+    {
+      "key": "bridge_2_token",
+      "type": "secret",
+      "label": {
+        "en": "Local token",
+        "fr": "Jeton local",
+        "de": "Lokaler Token",
+        "es": "Token local"
+      },
+      "description": {
+        "en": "16 characters. Bond app: the bridge, Settings, Advanced, Local token. Or the \"Get the local token\" button below.",
+        "fr": "16 caractères. Application Bond : le bridge, Réglages, Avancé, Local token. Ou le bouton « Récupérer le jeton local » plus bas.",
+        "de": "16 Zeichen. Bond-App: die Bridge, Settings, Advanced, Local token. Oder der Knopf „Lokalen Token abrufen“ weiter unten.",
+        "es": "16 caracteres. Aplicación Bond: el bridge, Settings, Advanced, Local token. O el botón «Obtener el token local» más abajo."
+      },
+      "required": false
+    },
+    {
+      "key": "bridge_3",
+      "type": "section",
+      "label": {
+        "en": "Third bridge (optional)",
+        "fr": "Troisième bridge (facultatif)",
+        "de": "Dritte Bridge (optional)",
+        "es": "Tercer bridge (opcional)"
+      },
+      "description": {
+        "en": "Same fields, for a third one.",
+        "fr": "Mêmes champs, pour un troisième.",
+        "de": "Dieselben Felder, für eine dritte.",
+        "es": "Los mismos campos, para un tercero."
+      }
+    },
+    {
+      "key": "bridge_3_host",
+      "type": "string",
+      "label": {
+        "en": "IP address",
+        "fr": "Adresse IP",
+        "de": "IP-Adresse",
+        "es": "Dirección IP"
+      },
+      "description": {
+        "en": "Address of the Bond bridge on your network. Fix it in your router (DHCP reservation).",
+        "fr": "Adresse du bridge Bond sur votre réseau. Fixez-la dans votre box (bail DHCP réservé).",
+        "de": "Adresse der Bond Bridge in deinem Netzwerk. Leg sie im Router fest (DHCP-Reservierung).",
+        "es": "Dirección del Bond Bridge en su red. Fíjela en su router (reserva DHCP)."
+      },
+      "placeholder": {
+        "en": "e.g. 192.168.1.20",
+        "fr": "ex. 192.168.1.20",
+        "de": "z. B. 192.168.1.20",
+        "es": "p. ej. 192.168.1.20"
+      },
+      "required": false,
+      "default": ""
+    },
+    {
+      "key": "bridge_3_token",
+      "type": "secret",
+      "label": {
+        "en": "Local token",
+        "fr": "Jeton local",
+        "de": "Lokaler Token",
+        "es": "Token local"
+      },
+      "description": {
+        "en": "16 characters. Bond app: the bridge, Settings, Advanced, Local token. Or the \"Get the local token\" button below.",
+        "fr": "16 caractères. Application Bond : le bridge, Réglages, Avancé, Local token. Ou le bouton « Récupérer le jeton local » plus bas.",
+        "de": "16 Zeichen. Bond-App: die Bridge, Settings, Advanced, Local token. Oder der Knopf „Lokalen Token abrufen“ weiter unten.",
+        "es": "16 caracteres. Aplicación Bond: el bridge, Settings, Advanced, Local token. O el botón «Obtener el token local» más abajo."
+      },
+      "required": false
+    },
+    {
+      "key": "options",
+      "type": "section",
+      "label": {
+        "en": "Options",
+        "fr": "Options",
+        "de": "Optionen",
+        "es": "Opciones"
+      },
+      "description": {
+        "en": "Fireplaces are never controlled from Gladys: lighting a gas flame by mistake (a scene, a voice assistant) is not harmless. They can be shown, read-only.",
+        "fr": "Les foyers ne sont jamais pilotés depuis Gladys : allumer une flamme de gaz par erreur (une scène, un assistant vocal) n'est pas anodin. Ils peuvent être affichés, en lecture seule.",
+        "de": "Kamine werden nie von Gladys gesteuert: Eine Gasflamme aus Versehen zu zünden (eine Szene, ein Sprachassistent) ist nicht harmlos. Man kann sie schreibgeschützt anzeigen.",
+        "es": "Las chimeneas nunca se controlan desde Gladys: encender una llama de gas por error (una escena, un asistente de voz) no es algo menor. Pueden mostrarse en solo lectura."
+      }
+    },
+    {
+      "key": "fireplaces",
+      "type": "select",
+      "label": {
+        "en": "Fireplaces",
+        "fr": "Foyers",
+        "de": "Kamine",
+        "es": "Chimeneas"
+      },
+      "required": false,
+      "default": "hidden",
       "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
+        {
+          "value": "hidden",
+          "label": {
+            "en": "Hidden",
+            "fr": "Masqués",
+            "de": "Ausgeblendet",
+            "es": "Ocultas"
+          }
+        },
+        {
+          "value": "read_only",
+          "label": {
+            "en": "Shown, read-only",
+            "fr": "Affichés, en lecture seule",
+            "de": "Angezeigt, schreibgeschützt",
+            "es": "Visibles, solo lectura"
+          }
+        }
       ]
     },
     {
-      "key": "poll_frequency",
-      "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
+      "key": "language",
+      "type": "select",
+      "label": {
+        "en": "Language of the feature names",
+        "fr": "Langue des noms de fonctionnalités",
+        "de": "Sprache der Funktionsnamen",
+        "es": "Idioma de los nombres de funciones"
+      },
       "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
+        "en": "Used when a device is added to Gladys; the names do not change afterwards.",
+        "fr": "Utilisée à l'ajout d'un appareil dans Gladys ; les noms ne changent plus ensuite.",
+        "de": "Wird beim Hinzufügen eines Geräts zu Gladys verwendet; die Namen ändern sich danach nicht mehr.",
+        "es": "Se usa al añadir un dispositivo a Gladys; los nombres no cambian después."
       },
       "required": false,
-      "default": 300,
-      "min": 60,
-      "max": 3600
+      "default": "fr",
+      "options": [
+        {
+          "value": "en",
+          "label": {
+            "en": "English",
+            "fr": "Anglais",
+            "de": "Englisch",
+            "es": "Inglés"
+          }
+        },
+        {
+          "value": "fr",
+          "label": {
+            "en": "French",
+            "fr": "Français",
+            "de": "Französisch",
+            "es": "Francés"
+          }
+        },
+        {
+          "value": "de",
+          "label": {
+            "en": "German",
+            "fr": "Allemand",
+            "de": "Deutsch",
+            "es": "Alemán"
+          }
+        },
+        {
+          "value": "es",
+          "label": {
+            "en": "Spanish",
+            "fr": "Espagnol",
+            "de": "Spanisch",
+            "es": "Español"
+          }
+        }
+      ]
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
+      "key": "find_bridges",
+      "label": {
+        "en": "Find the bridges",
+        "fr": "Trouver les bridges",
+        "de": "Bridges suchen",
+        "es": "Buscar los bridges"
+      },
+      "description": {
+        "en": "Looks for Bond bridges on your network and fills in the empty addresses.",
+        "fr": "Cherche les bridges Bond de votre réseau et remplit les adresses vides.",
+        "de": "Sucht Bond Bridges in deinem Netzwerk und trägt die leeren Adressen ein.",
+        "es": "Busca los Bond Bridge de su red y rellena las direcciones vacías."
+      },
+      "timeout_seconds": 20
+    },
+    {
+      "key": "fetch_token",
+      "label": {
+        "en": "Get the local token",
+        "fr": "Récupérer le jeton local",
+        "de": "Lokalen Token abrufen",
+        "es": "Obtener el token local"
+      },
+      "description": {
+        "en": "Unplug the bridge, plug it back, then press within 10 minutes: the token is saved.",
+        "fr": "Débranchez le bridge, rebranchez-le, puis appuyez dans les 10 minutes : le jeton est enregistré.",
+        "de": "Zieh den Stecker der Bridge, steck ihn wieder ein und drück innerhalb von 10 Minuten: Der Token wird gespeichert.",
+        "es": "Desenchufe el bridge, vuelva a enchufarlo y pulse en los 10 minutos siguientes: el token se guarda."
+      },
       "timeout_seconds": 30
     },
     {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
+      "key": "test_connection",
+      "label": {
+        "en": "Test the connection",
+        "fr": "Tester la connexion",
+        "de": "Verbindung testen",
+        "es": "Probar la conexión"
+      },
+      "description": {
+        "en": "Reads every bridge now and lists its devices.",
+        "fr": "Lit chaque bridge maintenant et compte ses appareils.",
+        "de": "Liest jede Bridge jetzt und zählt ihre Geräte.",
+        "es": "Lee cada bridge ahora y cuenta sus dispositivos."
+      },
+      "timeout_seconds": 60
+    },
+    {
+      "key": "tell_state",
+      "label": {
+        "en": "Correct the Bond state",
+        "fr": "Corriger l'état Bond",
+        "de": "Bond-Zustand korrigieren",
+        "es": "Corregir el estado de Bond"
+      },
+      "description": {
+        "en": "A device used with its own remote: tell Bond what it really is, without sending any signal.",
+        "fr": "Un appareil utilisé avec sa propre télécommande : dites à Bond ce qu'il est vraiment, sans envoyer de signal.",
+        "de": "Ein Gerät, das mit seiner eigenen Fernbedienung benutzt wurde: Sag Bond, wie es wirklich ist, ohne ein Signal zu senden.",
+        "es": "Un dispositivo usado con su propio mando: indique a Bond lo que es realmente, sin enviar ninguna señal."
+      },
+      "timeout_seconds": 20,
       "fields": [
         {
           "key": "device",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
+          "label": {
+            "en": "Device",
+            "fr": "Appareil",
+            "de": "Gerät",
+            "es": "Dispositivo"
+          },
           "required": true
+        },
+        {
+          "key": "state",
+          "type": "select",
+          "label": {
+            "en": "Real state",
+            "fr": "État réel",
+            "de": "Tatsächlicher Zustand",
+            "es": "Estado real"
+          },
+          "description": {
+            "en": "What the device really is now. Bond records it without sending any signal.",
+            "fr": "Ce qu'est vraiment l'appareil maintenant. Bond l'enregistre sans envoyer aucun signal.",
+            "de": "Wie das Gerät jetzt wirklich ist. Bond übernimmt es, ohne ein Signal zu senden.",
+            "es": "Lo que el dispositivo es realmente ahora. Bond lo registra sin enviar ninguna señal."
+          },
+          "required": true,
+          "options": [
+            {
+              "value": "power_off",
+              "label": {
+                "en": "Off",
+                "fr": "Éteint",
+                "de": "Aus",
+                "es": "Apagado"
+              }
+            },
+            {
+              "value": "power_on",
+              "label": {
+                "en": "On",
+                "fr": "Allumé",
+                "de": "An",
+                "es": "Encendido"
+              }
+            },
+            {
+              "value": "light_off",
+              "label": {
+                "en": "Light off",
+                "fr": "Lumière éteinte",
+                "de": "Licht aus",
+                "es": "Luz apagada"
+              }
+            },
+            {
+              "value": "light_on",
+              "label": {
+                "en": "Light on",
+                "fr": "Lumière allumée",
+                "de": "Licht an",
+                "es": "Luz encendida"
+              }
+            },
+            {
+              "value": "closed",
+              "label": {
+                "en": "Closed",
+                "fr": "Fermé",
+                "de": "Geschlossen",
+                "es": "Cerrado"
+              }
+            },
+            {
+              "value": "open",
+              "label": {
+                "en": "Open",
+                "fr": "Ouvert",
+                "de": "Offen",
+                "es": "Abierto"
+              }
+            }
+          ]
         }
       ]
     }
   ],
   "scene_triggers": [
     {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
-      "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
+      "key": "bridge_unreachable",
+      "label": {
+        "en": "Bond bridge unreachable",
+        "fr": "Bridge Bond injoignable",
+        "de": "Bond Bridge nicht erreichbar",
+        "es": "Bond Bridge inaccesible"
       },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
-        },
-        {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
-          "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
-          ]
-        }
-      ],
+      "description": {
+        "en": "A Bond bridge stopped answering (off, Wi-Fi lost): its devices no longer obey.",
+        "fr": "Un bridge Bond ne répond plus (éteint, Wi-Fi perdu) : ses appareils n'obéissent plus.",
+        "de": "Eine Bond Bridge antwortet nicht mehr (aus, WLAN verloren): Die Geräte daran gehorchen nicht mehr.",
+        "es": "Un Bond Bridge dejó de responder (apagado, Wi-Fi perdido): sus dispositivos ya no obedecen."
+      },
       "variables": [
         {
-          "key": "target",
+          "key": "bridge",
           "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
+          "label": {
+            "en": "Bridge name",
+            "fr": "Nom du bridge",
+            "de": "Name der Bridge",
+            "es": "Nombre del bridge"
+          }
+        },
+        {
+          "key": "bond_id",
+          "type": "string",
+          "label": {
+            "en": "Bond ID",
+            "fr": "Bond ID",
+            "de": "Bond-ID",
+            "es": "Bond ID"
+          }
+        }
+      ]
+    },
+    {
+      "key": "bridge_recovered",
+      "label": {
+        "en": "Bond bridge back",
+        "fr": "Bridge Bond de retour",
+        "de": "Bond Bridge wieder da",
+        "es": "Bond Bridge de vuelta"
+      },
+      "description": {
+        "en": "A Bond bridge answers again after being unreachable.",
+        "fr": "Un bridge Bond répond de nouveau après avoir été injoignable.",
+        "de": "Eine Bond Bridge antwortet wieder, nachdem sie nicht erreichbar war.",
+        "es": "Un Bond Bridge vuelve a responder tras estar inaccesible."
+      },
+      "variables": [
+        {
+          "key": "bridge",
+          "type": "string",
+          "label": {
+            "en": "Bridge name",
+            "fr": "Nom du bridge",
+            "de": "Name der Bridge",
+            "es": "Nombre del bridge"
+          }
+        },
+        {
+          "key": "bond_id",
+          "type": "string",
+          "label": {
+            "en": "Bond ID",
+            "fr": "Bond ID",
+            "de": "Bond-ID",
+            "es": "Bond ID"
+          }
+        },
+        {
+          "key": "down_minutes",
+          "type": "number",
+          "label": {
+            "en": "Minutes unreachable",
+            "fr": "Minutes injoignable",
+            "de": "Minuten nicht erreichbar",
+            "es": "Minutos inaccesible"
+          }
         }
       ]
     }
   ],
   "scene_actions": [
     {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
+      "key": "tell_state",
+      "label": {
+        "en": "Correct the Bond state",
+        "fr": "Corriger l'état Bond",
+        "de": "Bond-Zustand korrigieren",
+        "es": "Corregir el estado de Bond"
       },
-      "timeout_seconds": 15,
+      "description": {
+        "en": "Tell Bond what a device really is (used with its own remote), without sending any signal.",
+        "fr": "Dire à Bond ce qu'est vraiment un appareil (utilisé avec sa télécommande), sans envoyer de signal.",
+        "de": "Bond sagen, wie ein Gerät wirklich ist (mit seiner Fernbedienung benutzt), ohne ein Signal zu senden.",
+        "es": "Indicar a Bond lo que es realmente un dispositivo (usado con su mando), sin enviar ninguna señal."
+      },
+      "timeout_seconds": 20,
       "fields": [
         {
           "key": "device",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
+          "label": {
+            "en": "Device",
+            "fr": "Appareil",
+            "de": "Gerät",
+            "es": "Dispositivo"
+          },
           "required": true
-        }
-      ],
-      "outputs": [
+        },
         {
-          "key": "signalled",
-          "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
+          "key": "state",
+          "type": "select",
+          "label": {
+            "en": "Real state",
+            "fr": "État réel",
+            "de": "Tatsächlicher Zustand",
+            "es": "Estado real"
+          },
+          "description": {
+            "en": "What the device really is now. Bond records it without sending any signal.",
+            "fr": "Ce qu'est vraiment l'appareil maintenant. Bond l'enregistre sans envoyer aucun signal.",
+            "de": "Wie das Gerät jetzt wirklich ist. Bond übernimmt es, ohne ein Signal zu senden.",
+            "es": "Lo que el dispositivo es realmente ahora. Bond lo registra sin enviar ninguna señal."
+          },
+          "required": true,
+          "options": [
+            {
+              "value": "power_off",
+              "label": {
+                "en": "Off",
+                "fr": "Éteint",
+                "de": "Aus",
+                "es": "Apagado"
+              }
+            },
+            {
+              "value": "power_on",
+              "label": {
+                "en": "On",
+                "fr": "Allumé",
+                "de": "An",
+                "es": "Encendido"
+              }
+            },
+            {
+              "value": "light_off",
+              "label": {
+                "en": "Light off",
+                "fr": "Lumière éteinte",
+                "de": "Licht aus",
+                "es": "Luz apagada"
+              }
+            },
+            {
+              "value": "light_on",
+              "label": {
+                "en": "Light on",
+                "fr": "Lumière allumée",
+                "de": "Licht an",
+                "es": "Luz encendida"
+              }
+            },
+            {
+              "value": "closed",
+              "label": {
+                "en": "Closed",
+                "fr": "Fermé",
+                "de": "Geschlossen",
+                "es": "Cerrado"
+              }
+            },
+            {
+              "value": "open",
+              "label": {
+                "en": "Open",
+                "fr": "Ouvert",
+                "de": "Offen",
+                "es": "Abierto"
+              }
+            }
+          ]
         }
       ]
     }
   ],
   "widgets": [
     {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
-      "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
+      "key": "ceiling_fan",
+      "label": {
+        "en": "Ceiling fan",
+        "fr": "Ventilateur de plafond",
+        "de": "Deckenventilator",
+        "es": "Ventilador de techo"
       },
-      "icon": "activity",
-      "action_timeout_seconds": 15
+      "description": {
+        "en": "A Bond ceiling fan: speed, light, on/off, like its wall remote.",
+        "fr": "Un ventilateur de plafond Bond : vitesse, lumière, marche/arrêt.",
+        "de": "Ein Bond-Deckenventilator: Stufe, Licht, Ein/Aus wie seine Wandfernbedienung.",
+        "es": "Un ventilador de techo Bond: velocidad, luz y encendido, como su mando."
+      },
+      "icon": "wind",
+      "settings": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Ceiling fan",
+            "fr": "Ventilateur de plafond",
+            "de": "Deckenventilator",
+            "es": "Ventilador de techo"
+          },
+          "required": true
+        }
+      ],
+      "action_timeout_seconds": 20
     }
   ]
 }

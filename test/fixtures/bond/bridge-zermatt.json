@@ -1,0 +1,294 @@
+{
+  "version": {
+    "target": "zermatt",
+    "fw_ver": "v3.10.27",
+    "fw_date": "Tue Apr  8 18:02:11 UTC 2025",
+    "uptime_s": 86123,
+    "make": "Olibra",
+    "model": "BD-1000",
+    "branding_profile": "OLIBRA_ZERMATT",
+    "bondid": "ZZBL12345",
+    "upgrade_http": true,
+    "api": 2,
+    "_": "5fd2a1c0"
+  },
+  "bridge": {
+    "name": "Living room bridge",
+    "location": "Living Room",
+    "bluelight": 127,
+    "_": "8bd28c38"
+  },
+  "token": {
+    "locked": 1,
+    "_": "3d0c4a1e"
+  },
+  "devices": {
+    "79135791": {
+      "device": {
+        "name": "Fan",
+        "type": "CF",
+        "location": "Living Room",
+        "template": "RCF84",
+        "actions": [
+          "TurnOn",
+          "TurnOff",
+          "SetSpeed",
+          "IncreaseSpeed",
+          "DecreaseSpeed",
+          "SetDirection",
+          "ToggleDirection",
+          "TurnLightOn",
+          "TurnLightOff",
+          "ToggleLight",
+          "SetBrightness",
+          "IncreaseBrightness",
+          "DecreaseBrightness",
+          "Stop",
+          "SetTimer"
+        ],
+        "properties": {
+          "_": "84cd8a43"
+        },
+        "state": {
+          "_": "ad9bcde4"
+        },
+        "commands": {
+          "_": "02c1a47e"
+        },
+        "_": "61a5a1c2"
+      },
+      "properties": {
+        "max_speed": 6,
+        "trust_state": false,
+        "addr": 4321,
+        "freq": 304200,
+        "bps": 3000,
+        "zero_gap": 0,
+        "_": "84cd8a43"
+      },
+      "state": {
+        "power": 1,
+        "speed": 3,
+        "direction": 1,
+        "light": 1,
+        "brightness": 75,
+        "timer": 0,
+        "_": "ad9bcde4"
+      }
+    },
+    "2f00c3e1": {
+      "device": {
+        "name": "Bedroom Fan",
+        "type": "CF",
+        "location": "Bedroom",
+        "template": "A1",
+        "actions": [
+          "TogglePower",
+          "SetSpeed",
+          "ToggleDirection",
+          "ToggleLight",
+          "ToggleUpLight",
+          "ToggleDownLight",
+          "BreezeOn",
+          "BreezeOff",
+          "SetBreeze"
+        ],
+        "properties": {
+          "_": "1e3a5c7b"
+        },
+        "state": {
+          "_": "9a8b7c6d"
+        },
+        "commands": {
+          "_": "0f1e2d3c"
+        },
+        "_": "4b5a6978"
+      },
+      "properties": {
+        "max_speed": 3,
+        "trust_state": true,
+        "_": "1e3a5c7b"
+      },
+      "state": {
+        "power": 0,
+        "speed": 2,
+        "direction": -1,
+        "light": 0,
+        "up_light": 1,
+        "down_light": 1,
+        "breeze": [0, 50, 50],
+        "timer": 0,
+        "_": "9a8b7c6d"
+      }
+    },
+    "3a2c9e44": {
+      "device": {
+        "name": "Patio Shades",
+        "type": "MS",
+        "location": "Patio",
+        "template": "MS84",
+        "actions": [
+          "Open",
+          "Close",
+          "Hold",
+          "SetPosition",
+          "IncreasePosition",
+          "DecreasePosition",
+          "Preset",
+          "ToggleOpen"
+        ],
+        "properties": {
+          "_": "77aa11bb"
+        },
+        "state": {
+          "_": "22cc33dd"
+        },
+        "commands": {
+          "_": "44ee55ff"
+        },
+        "_": "66aa77bb"
+      },
+      "properties": {
+        "trust_state": false,
+        "open_raises": true,
+        "_": "77aa11bb"
+      },
+      "state": {
+        "open": 0,
+        "position": 100,
+        "_": "22cc33dd"
+      }
+    },
+    "6c1d2e3f": {
+      "device": {
+        "name": "Kitchen Light",
+        "type": "LT",
+        "location": "Kitchen",
+        "template": "LT1",
+        "actions": [
+          "TurnLightOn",
+          "TurnLightOff",
+          "ToggleLight",
+          "SetBrightness",
+          "SetColorTemp",
+          "IncreaseColorTemp",
+          "DecreaseColorTemp"
+        ],
+        "properties": {
+          "_": "a1b2c3d4"
+        },
+        "state": {
+          "_": "e5f6a7b8"
+        },
+        "commands": {
+          "_": "c9d0e1f2"
+        },
+        "_": "a3b4c5d6"
+      },
+      "properties": {
+        "min_color_temp": 2700,
+        "max_color_temp": 5000,
+        "trust_state": false,
+        "_": "a1b2c3d4"
+      },
+      "state": {
+        "light": 1,
+        "brightness": 50,
+        "color_temp": 3000,
+        "_": "e5f6a7b8"
+      }
+    },
+    "5e4d3c2b": {
+      "device": {
+        "name": "Fireplace",
+        "type": "FP",
+        "location": "Family Room",
+        "template": "FP1",
+        "actions": [
+          "TurnOn",
+          "TurnOff",
+          "TogglePower",
+          "SetFlame",
+          "IncreaseFlame",
+          "DecreaseFlame",
+          "TurnLightOn",
+          "TurnLightOff"
+        ],
+        "properties": {
+          "_": "0a1b2c3d"
+        },
+        "state": {
+          "_": "4e5f6a7b"
+        },
+        "commands": {
+          "_": "8c9d0e1f"
+        },
+        "_": "2a3b4c5d"
+      },
+      "properties": {
+        "trust_state": false,
+        "_": "0a1b2c3d"
+      },
+      "state": {
+        "power": 0,
+        "flame": 50,
+        "light": 0,
+        "_": "4e5f6a7b"
+      }
+    },
+    "7a6b5c4d": {
+      "device": {
+        "name": "Pool Pump",
+        "type": "GX",
+        "location": "Garden",
+        "template": "GX1",
+        "actions": ["TurnOn", "TurnOff", "TogglePower"],
+        "properties": {
+          "_": "6e7f8a9b"
+        },
+        "state": {
+          "_": "0c1d2e3f"
+        },
+        "commands": {
+          "_": "4a5b6c7d"
+        },
+        "_": "8e9f0a1b"
+      },
+      "properties": {
+        "trust_state": false,
+        "_": "6e7f8a9b"
+      },
+      "state": {
+        "power": 0,
+        "_": "0c1d2e3f"
+      }
+    },
+    "1b2c3d4e": {
+      "device": {
+        "name": "Garage Door",
+        "type": "GD",
+        "location": "Garage",
+        "template": "GD1",
+        "actions": ["ToggleOpen"],
+        "properties": {
+          "_": "5f6a7b8c"
+        },
+        "state": {
+          "_": "9d0e1f2a"
+        },
+        "commands": {
+          "_": "3b4c5d6e"
+        },
+        "_": "7f8a9b0c"
+      },
+      "properties": {
+        "trust_state": false,
+        "_": "5f6a7b8c"
+      },
+      "state": {
+        "open": 0,
+        "_": "9d0e1f2a"
+      }
+    }
+  }
+}

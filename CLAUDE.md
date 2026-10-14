@@ -11,17 +11,22 @@ Gladys through
 [`@gladysassistant/integration-sdk`](https://github.com/GladysAssistant/integration-sdk-js),
 its only runtime dependency. It started from the official JavaScript template.
 
+This one controls the devices of a **Bond Bridge** (Bond Bridge Pro, Smart by
+Bond devices) through the Bond Local API v2: ceiling fans, shades, lights,
+generic devices, fireplaces read-only. See "Bond" at the end of this file.
+
 ## Commands
 
 ```bash
 npm install
 npm test                                  # node --test, the built-in runner
-node --test test/devices.test.js          # one file
-node --test --test-name-pattern "plug"    # tests whose name matches
+node --test test/hub.test.js              # one file
+node --test --test-name-pattern "shades"  # tests whose name matches
 npm run lint                              # ESLint
 npm run format:check                      # Prettier, as the CI runs it
 npm run format                            # Prettier, fix in place
 npx github:GladysAssistant/integration-store .   # store admission checks
+BOND_HOST=… BOND_TOKEN=… node scripts/probe.mjs  # read-only probe of a real bridge
 ```
 
 The CI (`.github/workflows/ci.yml`) runs `format:check`, `lint` and `test` on
@@ -31,16 +36,23 @@ pushing.
 ## Architecture
 
 ```
-index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
+index.js                          SDK bootstrap only
+src/app.js                        registerHandlers(gladys): every SDK handler, the configuration actions
+src/hub.js                        BondHub: bridges, timer, push, states, commands, status, actions
+src/bond/client.js                HTTP client of the Bond Local API v2 (queue of 2, Connection: close)
+src/bond/bpup.js                  BPUP push: UDP keep-alive and parsing
+src/bond/model.js                 pure: Bond type/actions → features, state → values, value → actions
+src/devices.js                    Gladys devices and external ids (bond:<bondid>_<device id>)
 src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
+src/widgets.js                    "Ceiling fan" widget (manifest `widgets`)
+src/texts.js                      every text sent to Gladys, in en/fr/de/es
+src/issues.js                     a repeated failure logged once (from gladys-subsonic)
 src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
+scripts/probe.mjs                 read-only probe of a real bridge (never prints the token)
 gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
-test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
+docs/{en,fr,de,es}.md             user documentation, re-hosted by Gladys (same sections)
+test/                             node --test, the SDK's fake Gladys + a fake bridge on real sockets
+test/helpers/fakeBond.js          fake Bond bridge: HTTP API + BPUP, from test/fixtures/bond/
 .github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
 ```
 
@@ -70,8 +82,10 @@ test/                             node --test, against the SDK's fake Gladys (in
   `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
   code (defaults, action, scene and widget handlers): change both sides
   together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
+- **User-facing text** exists in four languages (English, French, German,
+  Spanish): action messages, manifest texts, widget texts, feature names, and
+  `docs/en.md`, `docs/fr.md`, `docs/de.md`, `docs/es.md` with the same
+  sections. `test/i18n.test.js` checks them.
 - **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
   in English. Tests never touch the network.
 
@@ -233,3 +247,44 @@ long, et sur un « Sie »/« Ihr… » de politesse en allemand. Le store exige 
 - Docs `en`, `fr`, `de`, `es` avec les mêmes sections.
 - Chauffe, ouverture, sécurité : ne rien rendre pilotable « comme un thermostat » ou par un assistant
   vocal quand une erreur serait dangereuse (leçon d'OctoPrint).
+
+## Bond (propre à cette intégration)
+
+**API** (Bond Local API v2, docs-local.appbond.com, injoignable depuis les sessions de code ; référence de
+secours : `bond-async` MIT et l'intégration HA `bond` Apache-2.0, à cloner) :
+
+- `GET /v2/sys/version` et `GET /v2/token` répondent **sans jeton** ; tout le reste exige l'en-tête `BOND-Token`
+  (401 sinon). `/v2/token` ne donne le jeton (`{ locked: 0, token }`) que dans les **10 minutes** qui suivent la
+  mise sous tension du bridge.
+- `bondid` (`ZZBL…` bridge, `ZP…` Pro, `K…`/`T…`/`P…` Smart by Bond) + id de l'appareil (8 hex donné par
+  l'appli Bond) = identité Gladys, stable malgré un changement d'IP. `GET /v2/bridge` répond 404 sur un Smart by
+  Bond : son nom est celui de son unique appareil.
+- Une collection (`/v2/devices`) a une clé `_` (hash) à ignorer. Un appareil liste ses `actions` : une
+  fonctionnalité n'existe que si son action existe. Une télécommande « toggle only » (`TogglePower`,
+  `ToggleLight`…) ne s'envoie que si l'état cru diffère.
+- Conventions : sens 1 / -1 ; position du store 0 = **ouvert**, 100 = fermé (Gladys inverse) ; `breeze` =
+  `[mode, moyenne, variabilité]` ; la vitesse est gardée par le bridge quand le ventilateur est éteint.
+- `PUT /v2/devices/{id}/actions/{Action}` `{ argument }` ; « tell state » = `PATCH /v2/devices/{id}/state` (aucun
+  signal radio). L'état est une **croyance** : `has_feedback: false`.
+- **BPUP** : un datagramme `\n` vers UDP 30007 toutes les 60 s ; le bridge y répond et pousse
+  `devices/{id}/state`. Unicast dans les deux sens, donc compatible avec le réseau en pont de la sandbox (non
+  vérifié sur matériel). Poussée muette 70 s → lecture toutes les 30 s ; sinon lecture de sécurité toutes les
+  10 min.
+- Le bridge est un petit ESP32 : deux requêtes à la fois au plus, une connexion neuve par requête (il ferme vite
+  les connexions inactives), 5 s de délai.
+
+**Choix tranchés** : foyers jamais pilotables (masqués par défaut, sinon lecture seule) ; portes de garage,
+climatiseurs, bidets non publiés ; lumières haute/basse en `switch/binary` (le tableau de bord fusionne tous les
+`light/binary` d'un appareil en un seul panneau) ; vitesse `fan/speed` de 0 (arrêt) au maximum ; le mode brise en
+`switch/binary` (`fan/wind-setting` impose les options du cœur 0..max, dont « sommeil » qui n'existe pas chez Bond).
+
+**Pièges découverts ici** :
+
+- La signature de structure du cœur (`structure_changed`, bouton « Mettre à jour » de la Découverte) ne compte que
+  `external_id`, `category`, `type`, `unit`, `min`, `max`, `step` — **pas `read_only`**. Passer une fonctionnalité
+  de lecture seule à pilotable (ou l'inverse) n'est jamais proposé à l'utilisateur : il faudrait supprimer et
+  rajouter l'appareil. D'où, aussi, l'absence de mode « foyer pilotable » activable plus tard.
+- Le garde-fou du « Sie » de politesse prend aussi « Sie können… » (ils peuvent) et « Ihre Geräte » (ses
+  appareils) : reformuler (« Man kann sie… », « Die Geräte daran… ») plutôt que d'affaiblir le test.
+- Sans appareil ajouté à Gladys, un cycle ne lit rien : il faut quand même sonder le bridge (`/v2/sys/version`),
+  sinon un bridge éteint reste « connecté » dans l'état de connexion.

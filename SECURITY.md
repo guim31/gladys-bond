@@ -30,6 +30,28 @@ Gladys before reporting a problem.
 
 In scope: the code of this repository and the Docker image it publishes.
 
+What the integration handles:
+
+- **Secrets**: the local tokens of the Bond bridges are `secret` fields of the
+  Gladys configuration. The integration reads them from Gladys at startup,
+  keeps them in memory, sends them only to the bridge they belong to (the
+  `BOND-Token` header, over plain HTTP on the local network, as the Bond local
+  API requires), and never writes them to `/data` nor to the logs. "Get the
+  local token" reads the token from the bridge (`GET /v2/token`, answered only
+  during the 10 minutes after the bridge starts) and saves it in the Gladys
+  configuration.
+- **Stored in `/data`**: nothing.
+- **Network**: HTTP requests go only to the bridge addresses of the
+  configuration, on the local network; UDP datagrams (BPUP keep-alives) go to
+  port 30007 of the same addresses, and only their answers are read. "Find the
+  bridges" asks the Gladys core for an mDNS browse of `_bond._tcp` (declared
+  in the manifest). The integration opens no listening port and calls no cloud
+  service.
+- **Safety**: fireplaces are never controllable from Gladys, and garage doors
+  are not published, so that a scene, a voice assistant or a mistake on the
+  dashboard cannot light a flame or open a door.
+
 Out of scope: Gladys Assistant itself (see its
 [security policy](https://github.com/GladysAssistant/Gladys/security/policy)),
-and the third-party services and devices the integration talks to.
+the Bond bridges and their firmware, and the other devices and services of
+your network.
